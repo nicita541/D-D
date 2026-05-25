@@ -358,8 +358,8 @@ namespace backend.Services
                     main_hand = @mainHand,
                     off_hand = @offHand,
                     amulet = @amulet,
-                    ring_1 = @ring1,
-                    ring_2 = @ring2
+                    ring1 = @ring1,
+                    ring2 = @ring2
                 WHERE player_id = @playerId;
             """;
 
@@ -504,26 +504,26 @@ namespace backend.Services
             Ability ability)
         {
             const string sql = """
-                INSERT INTO game.abilities
-                (
-                    player_id,
-                    ability_type,
-                    name,
-                    description
-                )
-                VALUES
-                (
-                    @playerId,
-                    @abilityType,
-                    @name,
-                    @description
-                );
-            """;
+        INSERT INTO game.abilities
+        (
+            player_id,
+            source,
+            name,
+            description
+        )
+        VALUES
+        (
+            @playerId,
+            @source::game.ability_source,
+            @name,
+            @description
+        );
+    """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
 
             command.Parameters.AddWithValue("playerId", playerId);
-            command.Parameters.AddWithValue("abilityType", abilityType);
+            command.Parameters.AddWithValue("source", abilityType);
             command.Parameters.AddWithValue("name", ability.Name);
             command.Parameters.AddWithValue("description", ability.Description);
 

@@ -10,8 +10,9 @@ namespace backend
 
             builder.Services.AddControllers();
 
-            // OpenAPI
-            builder.Services.AddOpenApi();
+            // Swagger
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
 
             // PostgreSQL service
             builder.Services.AddScoped<PlayerDatabaseService>();
@@ -20,7 +21,8 @@ namespace backend
 
             if (app.Environment.IsDevelopment())
             {
-                app.MapOpenApi();
+                app.UseSwagger();
+                app.UseSwaggerUI();
             }
 
             app.UseHttpsRedirection();
