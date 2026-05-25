@@ -121,7 +121,11 @@ namespace backend.Services
                     RETURNING id;
                 """;
 
-                await using var insertPlayerCommand = new NpgsqlCommand(insertPlayerSql, connection, transaction);
+                await using var insertPlayerCommand = new NpgsqlCommand(
+                    insertPlayerSql,
+                    connection,
+                    transaction
+                );
 
                 insertPlayerCommand.Parameters.AddWithValue("name", player.Character.Name);
                 insertPlayerCommand.Parameters.AddWithValue("background", player.Character.Background);

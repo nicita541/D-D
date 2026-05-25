@@ -8,24 +8,23 @@ namespace backend.Controllers
     [Route("api/[controller]")]
     public class PlayersController : ControllerBase
     {
-        private readonly PlayerDatabaseService _playerDatabaseService;
+        private readonly PlayerDatabaseService _players;
 
-        public PlayersController(PlayerDatabaseService playerDatabaseService)
+        public PlayersController(PlayerDatabaseService players)
         {
-            _playerDatabaseService = playerDatabaseService;
+            _players = players;
         }
 
         [HttpGet]
         public async Task<ActionResult<List<Player>>> GetPlayers()
         {
-            var players = await _playerDatabaseService.GetPlayersAsync();
-            return Ok(players);
+            return Ok(await _players.GetPlayersAsync());
         }
 
         [HttpGet("{id:guid}")]
         public async Task<ActionResult<Player>> GetPlayer(Guid id)
         {
-            var player = await _playerDatabaseService.GetPlayerByIdAsync(id);
+            var player = await _players.GetPlayerByIdAsync(id);
 
             if (player == null)
             {
@@ -38,12 +37,12 @@ namespace backend.Controllers
         [HttpPost]
         public async Task<ActionResult<object>> CreatePlayer([FromBody] Player player)
         {
-            var playerId = await _playerDatabaseService.CreatePlayerAsync(player);
+            var id = await _players.CreatePlayerAsync(player);
 
             return Ok(new
             {
-                id = playerId,
-                message = "Player created successfully"
+                id,
+                message = "Персонаж создан"
             });
         }
     }
