@@ -1,0 +1,417 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>Лист персонажа</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 30px;
+            background: #1e1e1e;
+            color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+
+        .sheet {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #2b2b2b;
+            border: 2px solid #555;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 2px solid #555;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .character-name {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffd166;
+        }
+
+        .character-info {
+            color: #ccc;
+            margin-top: 8px;
+        }
+
+        .level-box {
+            min-width: 120px;
+            text-align: center;
+            background: #3a3a3a;
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid #666;
+        }
+
+        .level-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #06d6a0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: #363636;
+            border: 1px solid #555;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+            .card h2 {
+                margin-top: 0;
+                font-size: 20px;
+                color: #ffd166;
+                border-bottom: 1px solid #555;
+                padding-bottom: 8px;
+            }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .stat {
+            background: #242424;
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #555;
+        }
+
+        .stat-name {
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            margin-top: 6px;
+        }
+
+        .resource {
+            margin-bottom: 12px;
+        }
+
+        .resource-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .bar {
+            width: 100%;
+            height: 18px;
+            background: #222;
+            border-radius: 99px;
+            overflow: hidden;
+            border: 1px solid #555;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef476f, #ffd166);
+        }
+
+        .mana .bar-fill {
+            background: linear-gradient(90deg, #118ab2, #06d6a0);
+        }
+
+        .actions .bar-fill {
+            background: linear-gradient(90deg, #8338ec, #3a86ff);
+        }
+
+        .tag {
+            display: inline-block;
+            background: #444;
+            border: 1px solid #666;
+            border-radius: 999px;
+            padding: 6px 10px;
+            margin: 4px;
+            font-size: 14px;
+        }
+
+        .condition {
+            background: #4a1f1f;
+            border: 1px solid #b94a48;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .condition-name {
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+
+        .inventory-item {
+            padding: 8px;
+            background: #242424;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border: 1px solid #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sheet">
+        <div class="header">
+            <div>
+                <div class="character-name" id="characterName"></div>
+                <div class="character-info" id="characterInfo"></div>
+                <p id="background"></p>
+            </div>
+
+            <div class="level-box">
+                <div>Уровень</div>
+                <div class="level-number" id="level"></div>
+                <div id="experience"></div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Ресурсы</h2>
+
+                <div class="resource">
+                    <div class="resource-label">
+                        <span>ХП</span>
+                        <span id="hpText"></span>
+                    </div>
+                    <div class="bar">
+                        <div class="bar-fill" id="hpBar"></div>
+                    </div>
+                </div>
+
+                <div class="resource mana">
+                    <div class="resource-label">
+                        <span>Мана</span>
+                        <span id="manaText"></span>
+                    </div>
+                    <div class="bar">
+                        <div class="bar-fill" id="manaBar"></div>
+                    </div>
+                </div>
+
+                <div class="resource actions">
+                    <div class="resource-label">
+                        <span>Очки действий</span>
+                        <span id="actionText"></span>
+                    </div>
+                    <div class="bar">
+                        <div class="bar-fill" id="actionBar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Состояния</h2>
+                <div id="conditions"></div>
+            </div>
+
+            <div class="card">
+                <h2>Характеристики</h2>
+                <div class="stats-grid" id="attributes"></div>
+            </div>
+
+            <div class="card">
+                <h2>Инвентарь</h2>
+                <div id="inventory"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const player = {
+      character: {
+        name: "Артур Железный Клык",
+        background: "Бывший солдат пограничной крепости. Потерял отряд в битве с нежитью.",
+        species: "Human",
+        class: "Fighter",
+        subclass: "Champion",
+        level: 3,
+        experience: 900
+      },
+      resources: {
+        hp: {
+          max: 32,
+          current: 28
+        },
+        mana: {
+          max: 0,
+          current: 0
+        },
+        actionPoints: {
+          max: 2,
+          current: 2
+        },
+        conditions: {
+          active: [
+            {
+              name: "Bleeding",
+              description: "Кровотечение. Персонаж теряет 2 ХП каждый ход.",
+              durationTurns: 3,
+              power: 2,
+              isPermanent: false
+            },
+            {
+              name: "Missing Arm",
+              description: "Нет одной руки.",
+              durationTurns: null,
+              power: null,
+              isPermanent: true
+            }
+          ]
+        }
+      },
+      attributes: {
+        strength: 16,
+        intelligence: 10,
+        dexterity: 12,
+        wisdom: 11,
+        constitution: 15,
+        charisma: 13,
+        initiative: 1,
+        speed: 9,
+        perception: 11
+      },
+      inventory: [
+        "Backpack",
+        "Rations x5",
+        "Torch x3",
+        "Longsword",
+        "Shield"
+      ]
+    };
+
+    renderPlayer(player);
+
+    function renderPlayer(player) {
+      document.getElementById("characterName").textContent = player.character.name;
+
+      document.getElementById("characterInfo").textContent =
+        `${player.character.species} | ${player.character.class} | ${player.character.subclass}`;
+
+      document.getElementById("background").textContent = player.character.background;
+      document.getElementById("level").textContent = player.character.level;
+      document.getElementById("experience").textContent = `${player.character.experience} XP`;
+
+      renderResource("hp", player.resources.hp);
+      renderResource("mana", player.resources.mana);
+      renderResource("action", player.resources.actionPoints);
+
+      renderAttributes(player.attributes);
+      renderConditions(player.resources.conditions.active);
+      renderInventory(player.inventory);
+    }
+
+    function renderResource(prefix, resource) {
+      const text = document.getElementById(`${prefix}Text`);
+      const bar = document.getElementById(`${prefix}Bar`);
+
+      text.textContent = `${resource.current} / ${resource.max}`;
+
+      let percent = 0;
+
+      if (resource.max > 0) {
+        percent = resource.current / resource.max * 100;
+      }
+
+      bar.style.width = `${percent}%`;
+    }
+
+    function renderAttributes(attributes) {
+      const container = document.getElementById("attributes");
+
+      const names = {
+        strength: "Сила",
+        intelligence: "Интеллект",
+        dexterity: "Ловкость",
+        wisdom: "Мудрость",
+        constitution: "Телосложение",
+        charisma: "Харизма",
+        initiative: "Инициатива",
+        speed: "Скорость",
+        perception: "Восприятие"
+      };
+
+      container.innerHTML = "";
+
+      for (const key in names) {
+        const div = document.createElement("div");
+        div.className = "stat";
+
+        div.innerHTML = `
+          <div class="stat-name">${names[key]}</div>
+          <div class="stat-value">${attributes[key]}</div>
+        `;
+
+        container.appendChild(div);
+      }
+    }
+
+    function renderConditions(conditions) {
+      const container = document.getElementById("conditions");
+      container.innerHTML = "";
+
+      if (!conditions || conditions.length === 0) {
+        container.innerHTML = "<p>Нет активных состояний</p>";
+        return;
+      }
+
+      for (const condition of conditions) {
+        const div = document.createElement("div");
+        div.className = "condition";
+
+        const duration = condition.isPermanent
+          ? "Постоянно"
+          : condition.durationTurns !== null
+            ? `${condition.durationTurns} ход.`
+            : "Неизвестно";
+
+        div.innerHTML = `
+          <div class="condition-name">${condition.name}</div>
+          <div>${condition.description}</div>
+          <div>Длительность: ${duration}</div>
+        `;
+
+        container.appendChild(div);
+      }
+    }
+
+    function renderInventory(inventory) {
+      const container = document.getElementById("inventory");
+      container.innerHTML = "";
+
+      if (!inventory || inventory.length === 0) {
+        container.innerHTML = "<p>Инвентарь пуст</p>";
+        return;
+      }
+
+      for (const item of inventory) {
+        const div = document.createElement("div");
+        div.className = "inventory-item";
+        div.textContent = item;
+        container.appendChild(div);
+      }
+    }
+    </script>
+</body>
+</html>
