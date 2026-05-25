@@ -12,5 +12,21 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     restart: unless-stopped
 
+  postgres:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    container_name: dnd-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: dnd
+      POSTGRES_USER: dnd_user
+      POSTGRES_PASSWORD: dnd_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   ollama_data:
+  postgres_data:
