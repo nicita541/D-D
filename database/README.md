@@ -42,10 +42,12 @@ docker compose up -d --build
 - `game.needs` - food, water, carrying capacity.
 - `game.movement` - km per turn.
 - `game.wealth` - coins.
-- `game.inventory_items` - inventory list.
+- `game.inventory_items` - inventory list with item type, damage, weight, quantity, armor class, and armor class bonus.
 - `game.equipped_gear` - equipped item slots.
+- `game.combat_stats` - armor class and proficiency bonus.
+- `game.attacks` - character attacks.
 
-`game.player_documents` is a view that returns the whole player as JSON shaped like the C# `Player` model.
+`game.player_documents` is a view that returns the whole player as JSON shaped like the current C# `Player` model JSON names.
 
 ## Example
 
@@ -62,10 +64,14 @@ UPDATE game.resources
 SET hp_max = 12, hp_current = 12, action_points_max = 1, action_points_current = 1
 WHERE player_id = '<player-id>';
 
-INSERT INTO game.inventory_items (player_id, item_order, name)
+INSERT INTO game.inventory_items (player_id, item_order, name, item_type, damage, weight, quantity, armor_class_bonus)
 VALUES
-    ('<player-id>', 0, 'Longsword'),
-    ('<player-id>', 1, 'Shield');
+    ('<player-id>', 0, 'Longsword', 'weapon', '1d8 slashing', 1.5, 1, NULL),
+    ('<player-id>', 1, 'Shield', 'shield', NULL, 3, 1, 2);
+
+INSERT INTO game.attacks (player_id, attack_order, name, roll, damage)
+VALUES
+    ('<player-id>', 0, 'Longsword', '+5', '1d8+3 slashing');
 
 SELECT data
 FROM game.player_documents
