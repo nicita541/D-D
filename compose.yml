@@ -27,6 +27,25 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: backend/Dockerfile
+    container_name: dnd-backend
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+
+      ConnectionStrings__DndDatabase: Host=postgres;Port=5432;Database=dnd;Username=dnd_user;Password=dnd_password
+
+      Ollama__BaseUrl: http://llm:11434
+    depends_on:
+      - postgres
+      - llm
+    restart: unless-stopped
+
 volumes:
   ollama_data:
   postgres_data:
