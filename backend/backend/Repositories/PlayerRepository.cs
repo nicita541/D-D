@@ -1026,17 +1026,17 @@ namespace backend.Repositories
 
                 if (item.Weapon != null)
                 {
-                    await InsertWeaponStatsAsync(connection, transaction, itemId, item.Weapon, cancellationToken);
+                    await InsertWeaponStatsAsync(connection, transaction, gameStateId, itemId, item.Weapon, cancellationToken);
                 }
 
                 if (item.Armor != null)
                 {
-                    await InsertArmorStatsAsync(connection, transaction, itemId, item.Armor, cancellationToken);
+                    await InsertArmorStatsAsync(connection, transaction, gameStateId, itemId, item.Armor, cancellationToken);
                 }
 
                 if (item.Consumable != null)
                 {
-                    await InsertConsumableStatsAsync(connection, transaction, itemId, item.Consumable, cancellationToken);
+                    await InsertConsumableStatsAsync(connection, transaction, gameStateId, itemId, item.Consumable, cancellationToken);
                 }
             }
 
@@ -1046,6 +1046,7 @@ namespace backend.Repositories
         private static async Task InsertWeaponStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid itemId,
             WeaponStats weapon,
             CancellationToken cancellationToken)
@@ -1053,6 +1054,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.item_weapon_stats
                 (
+                    game_state_id,
                     item_id,
                     damage_dice,
                     damage_type,
@@ -1063,6 +1065,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @itemId,
                     @damageDice,
                     @damageType,
@@ -1074,6 +1077,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("itemId", itemId);
             command.Parameters.AddWithValue("damageDice", weapon.DamageDice);
             command.Parameters.AddWithValue("damageType", weapon.DamageType);
@@ -1088,6 +1092,7 @@ namespace backend.Repositories
         private static async Task InsertArmorStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid itemId,
             ArmorStats armor,
             CancellationToken cancellationToken)
@@ -1095,6 +1100,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.item_armor_stats
                 (
+                    game_state_id,
                     item_id,
                     armor_class,
                     armor_class_bonus,
@@ -1104,6 +1110,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @itemId,
                     @armorClass,
                     @armorClassBonus,
@@ -1114,6 +1121,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("itemId", itemId);
             command.Parameters.AddWithValue("armorClass", armor.ArmorClass);
             command.Parameters.AddWithValue("armorClassBonus", armor.ArmorClassBonus);
@@ -1127,6 +1135,7 @@ namespace backend.Repositories
         private static async Task InsertConsumableStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid itemId,
             ConsumableStats consumable,
             CancellationToken cancellationToken)
@@ -1134,12 +1143,14 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.item_consumable_stats
                 (
+                    game_state_id,
                     item_id,
                     uses,
                     effects
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @itemId,
                     @uses,
                     @effects::jsonb
@@ -1147,6 +1158,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("itemId", itemId);
             command.Parameters.AddWithValue("uses", consumable.Uses);
             command.Parameters.AddWithValue("effects", JsonSerializer.Serialize(consumable.Effects, JsonOptions));
