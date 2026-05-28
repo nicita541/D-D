@@ -24,7 +24,7 @@ public sealed class AuthService : IAuthService
         _jwtOptions = jwtOptions.Value;
     }
 
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? ipAddress, CancellationToken cancellationToken)
+    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
     {
         ValidateRegisterRequest(request);
 
@@ -50,7 +50,7 @@ public sealed class AuthService : IAuthService
                 "user",
                 cancellationToken);
 
-            return await IssueTokensAsync(account, ipAddress, cancellationToken);
+            return await IssueTokensAsync(account, ipAddress, userAgent, null, cancellationToken);
         }
         catch (DuplicateAccountException ex)
         {
@@ -58,7 +58,7 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResponse?> LoginAsync(LoginRequest request, string? ipAddress, CancellationToken cancellationToken)
+    public async Task<AuthResponse?> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.EmailOrUsername) || string.IsNullOrWhiteSpace(request.Password))
         {
@@ -71,10 +71,10 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
-        return await IssueTokensAsync(account, ipAddress, cancellationToken);
+        return await IssueTokensAsync(account, ipAddress, userAgent, null, cancellationToken);
     }
 
-    public async Task<AuthResponse?> RefreshAsync(RefreshRequest request, string? ipAddress, CancellationToken cancellationToken)
+    public async Task<AuthResponse?> RefreshAsync(RefreshRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
         {
@@ -91,8 +91,7 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
-        await _repository.RevokeRefreshTokenAsync(tokenHash, ipAddress, cancellationToken);
-        return await IssueTokensAsync(storedToken.Account, ipAddress, cancellationToken);
+        return await IssueTokensAsync(storedToken.Account, ipAddress, userAgent, tokenHash, cancellationToken);
     }
 
     public async Task<bool> LogoutAsync(LogoutRequest request, string? ipAddress, CancellationToken cancellationToken)
@@ -103,9 +102,10 @@ public sealed class AuthService : IAuthService
         }
 
         return await _repository.RevokeRefreshTokenAsync(
-            _tokens.HashRefreshToken(request.RefreshToken),
-            ipAddress,
-            cancellationToken);
+    _tokens.HashRefreshToken(request.RefreshToken),
+    ipAddress,
+    null,
+    cancellationToken);
     }
 
     public async Task<AccountDto?> GetAccountAsync(Guid accountId, CancellationToken cancellationToken)
@@ -114,18 +114,34 @@ public sealed class AuthService : IAuthService
         return account is null || !account.IsActive ? null : ToDto(account);
     }
 
-    private async Task<AuthResponse> IssueTokensAsync(AccountRecord account, string? ipAddress, CancellationToken cancellationToken)
+    private async Task<AuthResponse> IssueTokensAsync(
+        AccountRecord account,
+        string? ipAddress,
+        string? userAgent,
+        string? replacesRefreshTokenHash,
+        CancellationToken cancellationToken)
     {
         var (accessToken, expiresAt) = _tokens.CreateAccessToken(account);
         var refreshToken = _tokens.CreateRefreshToken();
+        var refreshTokenHash = _tokens.HashRefreshToken(refreshToken);
         var refreshExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenDays <= 0 ? 30 : _jwtOptions.RefreshTokenDays);
 
         await _repository.StoreRefreshTokenAsync(
             account.Id,
-            _tokens.HashRefreshToken(refreshToken),
+            refreshTokenHash,
             refreshExpiresAt,
             ipAddress,
+            userAgent,
             cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(replacesRefreshTokenHash))
+        {
+            await _repository.RevokeRefreshTokenAsync(
+                replacesRefreshTokenHash,
+                ipAddress,
+                refreshTokenHash,
+                cancellationToken);
+        }
 
         return new AuthResponse
         {

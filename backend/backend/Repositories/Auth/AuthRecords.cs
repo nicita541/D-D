@@ -15,4 +15,8 @@ public sealed record RefreshTokenRecord(
     string TokenHash,
     DateTimeOffset ExpiresAt,
     DateTimeOffset? RevokedAt,
+    string? CreatedByIp,
+    string? RevokedByIp,
+    string? UserAgent,
+    string? ReplacedByTokenHash,
     AccountRecord Account);

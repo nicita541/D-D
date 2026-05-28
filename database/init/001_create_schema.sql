@@ -601,7 +601,6 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_game_state_id uuid;
-    v_player_id uuid;
     v_location_id uuid;
 BEGIN
     IF NOT EXISTS (
@@ -617,31 +616,6 @@ BEGIN
     INSERT INTO game.game_states (account_id, name)
     VALUES (p_account_id, COALESCE(NULLIF(btrim(p_save_name), ''), 'Новая игра'))
     RETURNING id INTO v_game_state_id;
-
-    INSERT INTO game.players (game_state_id, account_id, name)
-    VALUES (v_game_state_id, p_account_id, 'Герой')
-    RETURNING id INTO v_player_id;
-
-    INSERT INTO game.player_progression (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.player_resources (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.player_attributes (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.wealth (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.player_needs (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.equipped_gear (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
-
-    INSERT INTO game.combat_stats (player_id, game_state_id)
-    VALUES (v_player_id, v_game_state_id);
 
     INSERT INTO game.locations (game_state_id, name, description)
     VALUES (v_game_state_id, 'Начальная локация', 'Место, с которого начинается приключение.')

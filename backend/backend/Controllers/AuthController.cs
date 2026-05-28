@@ -33,7 +33,7 @@ public sealed class AuthController : ControllerBase
 
         try
         {
-            return Ok(await _auth.RegisterAsync(request, GetIpAddress(), cancellationToken));
+            return Ok(await _auth.RegisterAsync(request, GetIpAddress(), GetUserAgent(), cancellationToken));
         }
         catch (AuthServiceException ex)
         {
@@ -52,7 +52,7 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new MessageResponse { Message = "Invalid credentials." });
         }
 
-        var response = await _auth.LoginAsync(request, GetIpAddress(), cancellationToken);
+        var response = await _auth.LoginAsync(request, GetIpAddress(), GetUserAgent(), cancellationToken);
         return response is null ? Unauthorized(new MessageResponse { Message = "Invalid credentials." }) : Ok(response);
     }
 
@@ -67,7 +67,7 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new MessageResponse { Message = "Invalid refresh token." });
         }
 
-        var response = await _auth.RefreshAsync(request, GetIpAddress(), cancellationToken);
+        var response = await _auth.RefreshAsync(request, GetIpAddress(), GetUserAgent(), cancellationToken);
         return response is null ? Unauthorized(new MessageResponse { Message = "Invalid refresh token." }) : Ok(response);
     }
 
@@ -94,5 +94,11 @@ public sealed class AuthController : ControllerBase
     private string? GetIpAddress()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private string? GetUserAgent()
+    {
+        var userAgent = Request.Headers.UserAgent.ToString();
+        return string.IsNullOrWhiteSpace(userAgent) ? null : userAgent;
     }
 }

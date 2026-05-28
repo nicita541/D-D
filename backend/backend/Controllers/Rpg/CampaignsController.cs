@@ -34,7 +34,7 @@ public sealed class CampaignsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize]
+    [Authorize(Roles = "admin")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<OperationResponse>> CreateCampaign([FromBody] CreateCampaignTemplateRequest request, CancellationToken cancellationToken)
@@ -50,7 +50,7 @@ public sealed class CampaignsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize]
+    [Authorize(Roles = "admin")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> DeleteCampaign(Guid id, CancellationToken cancellationToken)

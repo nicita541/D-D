@@ -118,7 +118,7 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 'режим', sd.data->>'режим',
                 'сюжет', COALESCE((SELECT data FROM story_doc), '{}'::jsonb),
                 'партия', COALESCE((SELECT data FROM party_doc), '{}'::jsonb),
-                'игрок', sd.data->'игрок',
+                'персонажи', COALESCE(sd.data->'персонажи', '[]'::jsonb),
                 'мир', sd.data->'мир',
                 'квесты', sd.data->'квесты',
                 'последниеСобытия', COALESCE((SELECT data FROM recent_history), '[]'::jsonb),
