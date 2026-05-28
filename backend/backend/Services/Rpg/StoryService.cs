@@ -13,9 +13,9 @@ public sealed class StoryService : IStoryService
         _repository = repository;
     }
 
-    public Task<JsonElement?> GetStoryStateAsync(Guid gameStateId, CancellationToken cancellationToken)
-        => _repository.GetStoryStateAsync(gameStateId, cancellationToken);
+    public Task<JsonElement?> GetStoryStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+        => _repository.GetStoryStateAsync(accountId, gameStateId, cancellationToken);
 
-    public Task<Guid> UpsertStoryStateAsync(Guid gameStateId, CreateOrUpdateStoryStateRequest request, CancellationToken cancellationToken)
-        => _repository.UpsertStoryStateAsync(gameStateId, request, cancellationToken);
+    public Task<Guid?> UpsertStoryStateAsync(Guid accountId, Guid gameStateId, CreateOrUpdateStoryStateRequest request, CancellationToken cancellationToken)
+        => _repository.UpsertStoryStateAsync(accountId, gameStateId, request, cancellationToken);
 }

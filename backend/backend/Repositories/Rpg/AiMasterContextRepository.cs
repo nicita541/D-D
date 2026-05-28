@@ -1,7 +1,6 @@
 using System.Text.Json;
 using backend.Infrastructure.Database;
 using Npgsql;
-
 namespace backend.Repositories.Rpg;
 
 public sealed class AiMasterContextRepository : IAiMasterContextRepository
@@ -13,7 +12,7 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<JsonElement?> GetContextAsync(Guid gameStateId, int recentEventsLimit, CancellationToken cancellationToken)
+    public async Task<JsonElement?> GetContextAsync(Guid accountId, Guid gameStateId, int recentEventsLimit, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
@@ -22,6 +21,7 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 SELECT game_state_id, data
                 FROM game.game_state_documents
                 WHERE game_state_id = @gameStateId
+                  AND account_id = @accountId
                 LIMIT 1
             ),
             story_doc AS (
@@ -128,6 +128,7 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
         """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("recentEventsLimit", recentEventsLimit <= 0 ? 10 : recentEventsLimit);
 

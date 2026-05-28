@@ -1,6 +1,7 @@
 using backend.Contracts.Rpg.Campaigns;
 using backend.Contracts.Rpg.Common;
 using backend.Services.Rpg;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace backend.Controllers.Rpg;
@@ -33,6 +34,7 @@ public sealed class CampaignsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<OperationResponse>> CreateCampaign([FromBody] CreateCampaignTemplateRequest request, CancellationToken cancellationToken)
@@ -48,6 +50,7 @@ public sealed class CampaignsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> DeleteCampaign(Guid id, CancellationToken cancellationToken)

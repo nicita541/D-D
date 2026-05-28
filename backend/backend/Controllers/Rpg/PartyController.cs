@@ -1,19 +1,24 @@
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Parties;
+using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace backend.Controllers.Rpg;
 
+[Authorize]
 [ApiController]
 [Route("api/game-states/{gameStateId:guid}/party")]
 public sealed class PartyController : ControllerBase
 {
     private readonly IPartyService _party;
+    private readonly ICurrentUserService _currentUser;
 
-    public PartyController(IPartyService party)
+    public PartyController(IPartyService party, ICurrentUserService currentUser)
     {
         _party = party;
+        _currentUser = currentUser;
     }
 
     [HttpGet]
@@ -21,24 +26,33 @@ public sealed class PartyController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> GetParty(Guid gameStateId, CancellationToken cancellationToken)
     {
-        var party = await _party.GetPartyAsync(gameStateId, cancellationToken);
+        var current = _currentUser.GetRequiredUser();
+        var party = await _party.GetPartyAsync(current.AccountId, gameStateId, cancellationToken);
         return party.HasValue ? Ok(party.Value) : NotFound(new MessageResponse { Message = "Партия не найдена" });
     }
 
     [HttpPost]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> CreateParty(Guid gameStateId, [FromBody] CreatePartyRequest request, CancellationToken cancellationToken)
     {
-        var id = await _party.CreatePartyAsync(gameStateId, request ?? new CreatePartyRequest(), cancellationToken);
-        return CreatedAtAction(nameof(GetParty), new { gameStateId }, new OperationResponse { Id = id, Message = "Партия создана" });
+        var current = _currentUser.GetRequiredUser();
+        var id = await _party.CreatePartyAsync(current.AccountId, gameStateId, request ?? new CreatePartyRequest(), cancellationToken);
+        return id.HasValue
+            ? CreatedAtAction(nameof(GetParty), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Партия создана" })
+            : NotFound(new MessageResponse { Message = "GameState не найден" });
     }
 
     [HttpPost("members")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> AddMember(Guid gameStateId, [FromBody] AddPartyMemberRequest request, CancellationToken cancellationToken)
     {
-        var id = await _party.AddPartyMemberAsync(gameStateId, request ?? new AddPartyMemberRequest(), cancellationToken);
-        return CreatedAtAction(nameof(GetParty), new { gameStateId }, new OperationResponse { Id = id, Message = "Участник добавлен в партию" });
+        var current = _currentUser.GetRequiredUser();
+        var id = await _party.AddPartyMemberAsync(current.AccountId, gameStateId, request ?? new AddPartyMemberRequest(), cancellationToken);
+        return id.HasValue
+            ? CreatedAtAction(nameof(GetParty), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Участник добавлен в партию" })
+            : NotFound(new MessageResponse { Message = "GameState или персонаж не найден" });
     }
 
     [HttpDelete("members/{memberId:guid}")]
@@ -46,7 +60,8 @@ public sealed class PartyController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> RemoveMember(Guid gameStateId, Guid memberId, CancellationToken cancellationToken)
     {
-        var deleted = await _party.RemovePartyMemberAsync(gameStateId, memberId, cancellationToken);
+        var current = _currentUser.GetRequiredUser();
+        var deleted = await _party.RemovePartyMemberAsync(current.AccountId, gameStateId, memberId, cancellationToken);
         return deleted
             ? Ok(new OperationResponse { Id = memberId, Message = "Участник удалён из партии" })
             : NotFound(new MessageResponse { Message = "Участник партии не найден" });
