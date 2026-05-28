@@ -27,7 +27,6 @@ public sealed class CampaignRepository : ICampaignRepository
                 'краткоеописание', summary,
                 'вступление', opening_scene,
                 'главнаяцель', main_goal,
-                'секретымастера', master_secrets,
                 'начальныефлаги', initial_flags
             )::text
             FROM game.campaign_templates
@@ -59,7 +58,6 @@ public sealed class CampaignRepository : ICampaignRepository
                 'краткоеописание', summary,
                 'вступление', opening_scene,
                 'главнаяцель', main_goal,
-                'секретымастера', master_secrets,
                 'начальныефлаги', initial_flags
             )::text
             FROM game.campaign_templates

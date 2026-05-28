@@ -98,10 +98,18 @@ public sealed class RpgControllerTests
     }
 
     [Fact]
-    public void CampaignMutations_RequireAuthorize_ButReadsStayPublic()
+    public void CampaignMutations_RequireAdminRole_ButReadsStayPublic()
     {
-        AssertActionHas<AuthorizeAttribute>(nameof(CampaignsController.CreateCampaign));
-        AssertActionHas<AuthorizeAttribute>(nameof(CampaignsController.DeleteCampaign));
+        var createAuthorize = GetControllerAction(nameof(CampaignsController.CreateCampaign))
+            .GetCustomAttribute<AuthorizeAttribute>();
+        var deleteAuthorize = GetControllerAction(nameof(CampaignsController.DeleteCampaign))
+            .GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(createAuthorize);
+        Assert.NotNull(deleteAuthorize);
+        Assert.Equal("admin", createAuthorize!.Roles);
+        Assert.Equal("admin", deleteAuthorize!.Roles);
+
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaigns));
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaign));
     }
