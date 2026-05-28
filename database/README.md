@@ -100,6 +100,19 @@ Quests and history:
 - `game.game_turns`
 - `game.game_changes`
 
+## RPG Extension Tables
+
+These tables support the newer backend endpoints for campaigns, story state, parties, combat, and AI context:
+
+- `game.campaign_templates` - шаблоны сюжетов/кампаний: genre, tone, opening scene, main goal, master secrets, initial flags.
+- `game.story_states` - текущий прогресс сюжета в сохранении: act, scene, goal, tension, plot flags, known/hidden facts, short memory.
+- `game.parties` - партия игроков в одном сохранении.
+- `game.party_members` - участники партии: host, player, observer, gm.
+- `game.combat_states` - состояние боя в сохранении: active flag, round number, current turn participant.
+- `game.combat_participants` - участники боя: character, npc, monster, initiative, HP, acted flag, local combat conditions.
+
+These tables are added by `init/003_add_rpg_story_party_combat.sql`. The script is idempotent and uses the existing `game.set_updated_at()` trigger function.
+
 ## Create New Game
 
 Create an account first. In real usage this should come from the backend registration flow, which must provide a real password hash.
@@ -214,3 +227,9 @@ It verifies:
 - move sword to the well via `owner_kind = 'world_object'`
 - clear `main_hand_item_id`
 - valid JSON from `game.game_state_documents`
+- `game.campaign_templates`
+- `game.story_states`
+- `game.parties`
+- `game.party_members`
+- `game.combat_states`
+- `game.combat_participants`
