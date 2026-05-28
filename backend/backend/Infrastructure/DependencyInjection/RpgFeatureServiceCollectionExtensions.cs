@@ -7,12 +7,16 @@ public static class RpgFeatureServiceCollectionExtensions
 {
     public static IServiceCollection AddRpgFeatureServices(this IServiceCollection services)
     {
+        services.AddScoped<IGameStateRepository, GameStateRepository>();
+        services.AddScoped<ICharacterRepository, CharacterRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IStoryRepository, StoryRepository>();
         services.AddScoped<IPartyRepository, PartyRepository>();
         services.AddScoped<ICombatRepository, CombatRepository>();
         services.AddScoped<IAiMasterContextRepository, AiMasterContextRepository>();
 
+        services.AddScoped<IGameStateService, GameStateService>();
+        services.AddScoped<ICharacterService, CharacterService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IStoryService, StoryService>();
         services.AddScoped<IPartyService, PartyService>();

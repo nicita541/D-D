@@ -14,7 +14,7 @@ public sealed class StoryRepository : IStoryRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<JsonElement?> GetStoryStateAsync(Guid gameStateId, CancellationToken cancellationToken)
+    public async Task<JsonElement?> GetStoryStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
@@ -34,18 +34,21 @@ public sealed class StoryRepository : IStoryRepository
                 'краткаяПамять', s.short_memory
             )::text
             FROM game.story_states s
+            JOIN game.game_states gs ON gs.id = s.game_state_id
             LEFT JOIN game.campaign_templates c ON c.id = s.campaign_template_id
             WHERE s.game_state_id = @gameStateId
+              AND gs.account_id = @accountId
             LIMIT 1;
         """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? null : RpgDbJson.ParseElement(value.ToString()!);
     }
 
-    public async Task<Guid> UpsertStoryStateAsync(Guid gameStateId, CreateOrUpdateStoryStateRequest request, CancellationToken cancellationToken)
+    public async Task<Guid?> UpsertStoryStateAsync(Guid accountId, Guid gameStateId, CreateOrUpdateStoryStateRequest request, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
@@ -64,8 +67,7 @@ public sealed class StoryRepository : IStoryRepository
                 hidden_facts,
                 short_memory
             )
-            VALUES
-            (
+            SELECT
                 gen_random_uuid(),
                 @gameStateId,
                 @campaignTemplateId,
@@ -77,6 +79,11 @@ public sealed class StoryRepository : IStoryRepository
                 @knownFacts::jsonb,
                 @hiddenFacts::jsonb,
                 @shortMemory::jsonb
+            WHERE EXISTS (
+                SELECT 1
+                FROM game.game_states
+                WHERE id = @gameStateId
+                  AND account_id = @accountId
             )
             ON CONFLICT (game_state_id)
             DO UPDATE SET
@@ -94,6 +101,7 @@ public sealed class StoryRepository : IStoryRepository
         """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddNullableUuid("campaignTemplateId", request.CampaignTemplateId);
         command.Parameters.AddWithValue("currentAct", RpgDbJson.DbString(request.CurrentAct));
@@ -105,7 +113,7 @@ public sealed class StoryRepository : IStoryRepository
         command.Parameters.AddJsonb("hiddenFacts", request.HiddenFacts);
         command.Parameters.AddJsonb("shortMemory", request.ShortMemory);
 
-        return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Story state id was not returned."));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? null : (Guid)value;
     }
 }

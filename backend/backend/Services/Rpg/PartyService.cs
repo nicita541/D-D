@@ -13,15 +13,15 @@ public sealed class PartyService : IPartyService
         _repository = repository;
     }
 
-    public Task<JsonElement?> GetPartyAsync(Guid gameStateId, CancellationToken cancellationToken)
-        => _repository.GetPartyAsync(gameStateId, cancellationToken);
+    public Task<JsonElement?> GetPartyAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+        => _repository.GetPartyAsync(accountId, gameStateId, cancellationToken);
 
-    public Task<Guid> CreatePartyAsync(Guid gameStateId, CreatePartyRequest request, CancellationToken cancellationToken)
-        => _repository.CreatePartyAsync(gameStateId, request, cancellationToken);
+    public Task<Guid?> CreatePartyAsync(Guid accountId, Guid gameStateId, CreatePartyRequest request, CancellationToken cancellationToken)
+        => _repository.CreatePartyAsync(accountId, gameStateId, request, cancellationToken);
 
-    public Task<Guid> AddPartyMemberAsync(Guid gameStateId, AddPartyMemberRequest request, CancellationToken cancellationToken)
-        => _repository.AddPartyMemberAsync(gameStateId, request, cancellationToken);
+    public Task<Guid?> AddPartyMemberAsync(Guid accountId, Guid gameStateId, AddPartyMemberRequest request, CancellationToken cancellationToken)
+        => _repository.AddPartyMemberAsync(accountId, gameStateId, request, cancellationToken);
 
-    public Task<bool> RemovePartyMemberAsync(Guid gameStateId, Guid memberId, CancellationToken cancellationToken)
-        => _repository.RemovePartyMemberAsync(gameStateId, memberId, cancellationToken);
+    public Task<bool> RemovePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, CancellationToken cancellationToken)
+        => _repository.RemovePartyMemberAsync(accountId, gameStateId, memberId, cancellationToken);
 }

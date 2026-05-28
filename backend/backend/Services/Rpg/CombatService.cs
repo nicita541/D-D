@@ -13,15 +13,15 @@ public sealed class CombatService : ICombatService
         _repository = repository;
     }
 
-    public Task<JsonElement?> GetCombatStateAsync(Guid gameStateId, CancellationToken cancellationToken)
-        => _repository.GetCombatStateAsync(gameStateId, cancellationToken);
+    public Task<JsonElement?> GetCombatStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+        => _repository.GetCombatStateAsync(accountId, gameStateId, cancellationToken);
 
-    public Task<Guid> StartCombatAsync(Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken)
-        => _repository.StartCombatAsync(gameStateId, request, cancellationToken);
+    public Task<Guid?> StartCombatAsync(Guid accountId, Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken)
+        => _repository.StartCombatAsync(accountId, gameStateId, request, cancellationToken);
 
-    public Task<bool> EndCombatAsync(Guid gameStateId, CancellationToken cancellationToken)
-        => _repository.EndCombatAsync(gameStateId, cancellationToken);
+    public Task<bool> EndCombatAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+        => _repository.EndCombatAsync(accountId, gameStateId, cancellationToken);
 
-    public Task<Guid> AddParticipantAsync(Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken)
-        => _repository.AddParticipantAsync(gameStateId, request, cancellationToken);
+    public Task<Guid?> AddParticipantAsync(Guid accountId, Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken)
+        => _repository.AddParticipantAsync(accountId, gameStateId, request, cancellationToken);
 }

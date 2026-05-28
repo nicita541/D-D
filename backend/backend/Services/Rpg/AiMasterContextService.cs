@@ -12,6 +12,6 @@ public sealed class AiMasterContextService : IAiMasterContextService
         _repository = repository;
     }
 
-    public Task<JsonElement?> GetContextAsync(Guid gameStateId, int recentEventsLimit, CancellationToken cancellationToken)
-        => _repository.GetContextAsync(gameStateId, recentEventsLimit <= 0 ? 10 : recentEventsLimit, cancellationToken);
+    public Task<JsonElement?> GetContextAsync(Guid accountId, Guid gameStateId, int recentEventsLimit, CancellationToken cancellationToken)
+        => _repository.GetContextAsync(accountId, gameStateId, recentEventsLimit <= 0 ? 10 : recentEventsLimit, cancellationToken);
 }

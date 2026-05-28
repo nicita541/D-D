@@ -14,7 +14,7 @@ public sealed class CombatRepository : ICombatRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<JsonElement?> GetCombatStateAsync(Guid gameStateId, CancellationToken cancellationToken)
+    public async Task<JsonElement?> GetCombatStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
@@ -47,24 +47,32 @@ public sealed class CombatRepository : ICombatRepository
                 )
             )::text
             FROM game.combat_states c
+            JOIN game.game_states gs ON gs.id = c.game_state_id
             WHERE c.game_state_id = @gameStateId
+              AND gs.account_id = @accountId
             LIMIT 1;
         """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? null : RpgDbJson.ParseElement(value.ToString()!);
     }
 
-    public async Task<Guid> StartCombatAsync(Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken)
+    public async Task<Guid?> StartCombatAsync(Guid accountId, Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            var combatId = await EnsureCombatAsync(connection, transaction, gameStateId, isActive: true, cancellationToken);
+            var combatId = await EnsureCombatAsync(connection, transaction, accountId, gameStateId, isActive: true, cancellationToken);
+            if (!combatId.HasValue)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
 
             await using (var delete = new NpgsqlCommand(
                 "DELETE FROM game.combat_participants WHERE game_state_id = @gameStateId AND combat_state_id = @combatId;",
@@ -72,17 +80,17 @@ public sealed class CombatRepository : ICombatRepository
                 transaction))
             {
                 delete.Parameters.AddWithValue("gameStateId", gameStateId);
-                delete.Parameters.AddWithValue("combatId", combatId);
+                delete.Parameters.AddWithValue("combatId", combatId.Value);
                 await delete.ExecuteNonQueryAsync(cancellationToken);
             }
 
             foreach (var participant in request.Participants)
             {
-                await InsertParticipantAsync(connection, transaction, gameStateId, combatId, participant, cancellationToken);
+                await InsertParticipantAsync(connection, transaction, gameStateId, combatId.Value, participant, cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
-            return combatId;
+            return combatId.Value;
         }
         catch
         {
@@ -91,30 +99,40 @@ public sealed class CombatRepository : ICombatRepository
         }
     }
 
-    public async Task<bool> EndCombatAsync(Guid gameStateId, CancellationToken cancellationToken)
+    public async Task<bool> EndCombatAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         const string sql = """
-            UPDATE game.combat_states
+            UPDATE game.combat_states c
             SET is_active = false,
                 updated_at = now()
-            WHERE game_state_id = @gameStateId
-              AND is_active = true;
+            FROM game.game_states gs
+            WHERE gs.id = c.game_state_id
+              AND gs.account_id = @accountId
+              AND c.game_state_id = @gameStateId
+              AND c.is_active = true;
         """;
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<Guid> AddParticipantAsync(Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken)
+    public async Task<Guid?> AddParticipantAsync(Guid accountId, Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            var combatId = await EnsureCombatAsync(connection, transaction, gameStateId, isActive: true, cancellationToken);
-            var participantId = await InsertParticipantAsync(connection, transaction, gameStateId, combatId, request, cancellationToken);
+            var combatId = await EnsureCombatAsync(connection, transaction, accountId, gameStateId, isActive: true, cancellationToken);
+            if (!combatId.HasValue)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            var participantId = await InsertParticipantAsync(connection, transaction, gameStateId, combatId.Value, request, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return participantId;
         }
@@ -125,7 +143,13 @@ public sealed class CombatRepository : ICombatRepository
         }
     }
 
-    private static async Task<Guid> EnsureCombatAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, bool isActive, CancellationToken cancellationToken)
+    private static async Task<Guid?> EnsureCombatAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        bool isActive,
+        CancellationToken cancellationToken)
     {
         const string sql = """
             INSERT INTO game.combat_states
@@ -135,12 +159,16 @@ public sealed class CombatRepository : ICombatRepository
                 is_active,
                 round_number
             )
-            VALUES
-            (
+            SELECT
                 gen_random_uuid(),
                 @gameStateId,
                 @isActive,
                 1
+            WHERE EXISTS (
+                SELECT 1
+                FROM game.game_states
+                WHERE id = @gameStateId
+                  AND account_id = @accountId
             )
             ON CONFLICT (game_state_id)
             DO UPDATE SET
@@ -150,10 +178,11 @@ public sealed class CombatRepository : ICombatRepository
         """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("isActive", isActive);
-        return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Combat state id was not returned."));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? null : (Guid)value;
     }
 
     private static async Task<Guid> InsertParticipantAsync(

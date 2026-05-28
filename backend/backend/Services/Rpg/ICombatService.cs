@@ -5,8 +5,8 @@ namespace backend.Services.Rpg;
 
 public interface ICombatService
 {
-    Task<JsonElement?> GetCombatStateAsync(Guid gameStateId, CancellationToken cancellationToken);
-    Task<Guid> StartCombatAsync(Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken);
-    Task<bool> EndCombatAsync(Guid gameStateId, CancellationToken cancellationToken);
-    Task<Guid> AddParticipantAsync(Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken);
+    Task<JsonElement?> GetCombatStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken);
+    Task<Guid?> StartCombatAsync(Guid accountId, Guid gameStateId, StartCombatRequest request, CancellationToken cancellationToken);
+    Task<bool> EndCombatAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken);
+    Task<Guid?> AddParticipantAsync(Guid accountId, Guid gameStateId, AddCombatParticipantRequest request, CancellationToken cancellationToken);
 }

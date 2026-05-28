@@ -5,8 +5,8 @@ namespace backend.Repositories.Rpg;
 
 public interface IPartyRepository
 {
-    Task<JsonElement?> GetPartyAsync(Guid gameStateId, CancellationToken cancellationToken);
-    Task<Guid> CreatePartyAsync(Guid gameStateId, CreatePartyRequest request, CancellationToken cancellationToken);
-    Task<Guid> AddPartyMemberAsync(Guid gameStateId, AddPartyMemberRequest request, CancellationToken cancellationToken);
-    Task<bool> RemovePartyMemberAsync(Guid gameStateId, Guid memberId, CancellationToken cancellationToken);
+    Task<JsonElement?> GetPartyAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken);
+    Task<Guid?> CreatePartyAsync(Guid accountId, Guid gameStateId, CreatePartyRequest request, CancellationToken cancellationToken);
+    Task<Guid?> AddPartyMemberAsync(Guid accountId, Guid gameStateId, AddPartyMemberRequest request, CancellationToken cancellationToken);
+    Task<bool> RemovePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, CancellationToken cancellationToken);
 }
