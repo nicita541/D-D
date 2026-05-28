@@ -193,6 +193,9 @@ public sealed class CombatRepository : ICombatRepository
         AddCombatParticipantRequest request,
         CancellationToken cancellationToken)
     {
+        var actorType = NormalizeActorType(request.ActorType);
+        await ValidateParticipantActorAsync(connection, transaction, gameStateId, actorType, request.ActorId, cancellationToken);
+
         const string sql = """
             INSERT INTO game.combat_participants
             (
@@ -228,7 +231,7 @@ public sealed class CombatRepository : ICombatRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("combatId", combatId);
-        command.Parameters.AddWithValue("actorType", string.IsNullOrWhiteSpace(request.ActorType) ? "character" : request.ActorType.Trim());
+        command.Parameters.AddWithValue("actorType", actorType);
         command.Parameters.AddWithValue("actorId", request.ActorId);
         command.Parameters.AddWithValue("name", string.IsNullOrWhiteSpace(request.Name) ? "Безымянный" : request.Name.Trim());
         command.Parameters.AddWithValue("initiative", request.Initiative);
@@ -238,5 +241,73 @@ public sealed class CombatRepository : ICombatRepository
 
         return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Combat participant id was not returned."));
+    }
+
+    private static string NormalizeActorType(string? actorType)
+    {
+        var normalized = string.IsNullOrWhiteSpace(actorType)
+            ? "character"
+            : actorType.Trim().ToLowerInvariant();
+
+        if (normalized is not ("character" or "npc" or "monster"))
+        {
+            throw new CombatValidationException("типАктера должен быть character, npc или monster.");
+        }
+
+        if (normalized == "monster")
+        {
+            throw new CombatValidationException("типАктера monster пока не поддерживается: нет таблицы monsters/enemies.");
+        }
+
+        return normalized;
+    }
+
+    private static async Task ValidateParticipantActorAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        string actorType,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        if (actorId == Guid.Empty)
+        {
+            throw new CombatValidationException("actorId обязателен.");
+        }
+
+        const string sql = """
+        SELECT CASE
+            WHEN @actorType = 'character' THEN EXISTS (
+                SELECT 1
+                FROM game.players
+                WHERE id = @actorId
+                  AND game_state_id = @gameStateId
+            )
+            WHEN @actorType = 'npc' THEN EXISTS (
+                SELECT 1
+                FROM game.npcs
+                WHERE id = @actorId
+                  AND game_state_id = @gameStateId
+            )
+            ELSE false
+        END;
+    """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("actorType", actorType);
+        command.Parameters.AddWithValue("actorId", actorId);
+
+        var exists = await command.ExecuteScalarAsync(cancellationToken);
+        if (exists is true)
+        {
+            return;
+        }
+
+        var message = actorType == "character"
+            ? "Персонаж для участника боя не найден в этом GameState."
+            : "NPC для участника боя не найден в этом GameState.";
+
+        throw new CombatValidationException(message);
     }
 }

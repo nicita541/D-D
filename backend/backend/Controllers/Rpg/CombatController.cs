@@ -33,14 +33,23 @@ public sealed class CombatController : ControllerBase
 
     [HttpPost("start")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> StartCombat(Guid gameStateId, [FromBody] StartCombatRequest request, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        var id = await _combat.StartCombatAsync(current.AccountId, gameStateId, request ?? new StartCombatRequest(), cancellationToken);
-        return id.HasValue
-            ? CreatedAtAction(nameof(GetCombat), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Бой начат" })
-            : NotFound(new MessageResponse { Message = "GameState не найден" });
+
+        try
+        {
+            var id = await _combat.StartCombatAsync(current.AccountId, gameStateId, request ?? new StartCombatRequest(), cancellationToken);
+            return id.HasValue
+                ? CreatedAtAction(nameof(GetCombat), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Бой начат" })
+                : NotFound(new MessageResponse { Message = "GameState не найден" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
     }
 
     [HttpPost("end")]
@@ -57,13 +66,22 @@ public sealed class CombatController : ControllerBase
 
     [HttpPost("participants")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OperationResponse>> AddParticipant(Guid gameStateId, [FromBody] AddCombatParticipantRequest request, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        var id = await _combat.AddParticipantAsync(current.AccountId, gameStateId, request ?? new AddCombatParticipantRequest(), cancellationToken);
-        return id.HasValue
-            ? CreatedAtAction(nameof(GetCombat), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Участник боя добавлен" })
-            : NotFound(new MessageResponse { Message = "GameState не найден" });
+
+        try
+        {
+            var id = await _combat.AddParticipantAsync(current.AccountId, gameStateId, request ?? new AddCombatParticipantRequest(), cancellationToken);
+            return id.HasValue
+                ? CreatedAtAction(nameof(GetCombat), new { gameStateId }, new OperationResponse { Id = id.Value, Message = "Участник боя добавлен" })
+                : NotFound(new MessageResponse { Message = "GameState не найден" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
     }
 }
