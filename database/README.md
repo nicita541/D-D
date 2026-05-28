@@ -6,10 +6,10 @@ This project contains only the database layer. Backend API, JWT, C# models, cont
 
 ## Start
 
-From `E:\D&D\database`:
+From project root `E:\D&D`:
 
 ```powershell
-docker compose up -d --build
+docker compose up --build postgres
 ```
 
 Connection settings:
@@ -31,8 +31,9 @@ Host=localhost;Port=5432;Database=dnd;Username=dnd_user;Password=dnd_password
 PostgreSQL runs files from `init/` only when the data volume is empty. The schema intentionally recreates `auth` and `game`, so reset the volume after schema changes:
 
 ```powershell
-docker compose down -v
-docker compose up -d --build
+cd E:\D&D
+docker compose down -v --remove-orphans
+docker compose up --build postgres
 ```
 
 ## Schemas
@@ -44,6 +45,18 @@ Passwords and refresh tokens are stored only as hashes:
 
 - `auth.accounts.password_hash`
 - `auth.refresh_tokens.token_hash`
+
+## Auth Schema
+
+- `auth.accounts` stores users.
+- `auth.accounts.password_hash` stores only the password hash.
+- `auth.accounts.role` is used by the backend as the JWT role claim. Allowed values are `user` and `admin`; default is `user`.
+- `auth.refresh_tokens` stores long-lived refresh token records.
+- `auth.refresh_tokens.token_hash` stores only the refresh token hash.
+- Plain refresh tokens are never stored in the database.
+- JWT access tokens are never stored in the database.
+- Access tokens are short-lived; refresh tokens are long-lived and can be revoked or replaced.
+- The backend returns tokens in JSON responses.
 
 ## Main Tables
 
@@ -190,7 +203,8 @@ This avoids separate tables such as `player_inventory_items`, `location_items`, 
 The Torven seed is not executed automatically on database startup. It is an optional local example:
 
 ```powershell
-docker cp .\examples\torven_seed.sql dnd-postgres:/tmp/torven_seed.sql
+cd E:\D&D
+docker cp .\database\examples\torven_seed.sql dnd-postgres:/tmp/torven_seed.sql
 docker compose exec -T postgres psql -U dnd_user -d dnd -f /tmp/torven_seed.sql
 ```
 
@@ -210,7 +224,8 @@ It creates:
 Run after the database is up:
 
 ```powershell
-docker cp .\tests\smoke_test.sql dnd-postgres:/tmp/smoke_test.sql
+cd E:\D&D
+docker cp .\database\tests\smoke_test.sql dnd-postgres:/tmp/smoke_test.sql
 docker compose exec -T postgres psql -U dnd_user -d dnd -f /tmp/smoke_test.sql
 ```
 
@@ -219,7 +234,12 @@ The smoke test runs inside a transaction and rolls back at the end. It prints ex
 It verifies:
 
 - account creation
+- default account role `user`
+- refresh token hash storage
+- refresh token hash uniqueness
+- refresh token revocation metadata
 - `game.create_new_game`
+- `game.game_states.account_id`
 - default rows
 - sword item creation
 - world object well creation

@@ -22,14 +22,19 @@ CREATE TABLE auth.accounts (
     username text NOT NULL UNIQUE,
     password_hash text NOT NULL,
     display_name text,
+    role text NOT NULL DEFAULT 'user',
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     last_login_at timestamptz,
     is_active boolean NOT NULL DEFAULT true,
     CONSTRAINT accounts_email_not_empty CHECK (btrim(email) <> ''),
     CONSTRAINT accounts_username_not_empty CHECK (btrim(username) <> ''),
-    CONSTRAINT accounts_password_hash_not_empty CHECK (btrim(password_hash) <> '')
+    CONSTRAINT accounts_password_hash_not_empty CHECK (btrim(password_hash) <> ''),
+    CONSTRAINT accounts_role_check CHECK (role IN ('user', 'admin'))
 );
+
+CREATE UNIQUE INDEX ux_accounts_email_lower ON auth.accounts (lower(email));
+CREATE UNIQUE INDEX ux_accounts_username_lower ON auth.accounts (lower(username));
 
 CREATE TRIGGER accounts_set_updated_at
 BEFORE UPDATE ON auth.accounts
@@ -45,11 +50,16 @@ CREATE TABLE auth.refresh_tokens (
     revoked_at timestamptz,
     created_by_ip text,
     revoked_by_ip text,
+    user_agent text,
+    replaced_by_token_hash text,
     CONSTRAINT refresh_tokens_token_hash_not_empty CHECK (btrim(token_hash) <> '')
 );
 
 CREATE INDEX refresh_tokens_account_id_idx ON auth.refresh_tokens(account_id);
 CREATE INDEX refresh_tokens_expires_at_idx ON auth.refresh_tokens(expires_at);
+CREATE UNIQUE INDEX ux_refresh_tokens_token_hash ON auth.refresh_tokens(token_hash);
+CREATE INDEX ix_refresh_tokens_account_id ON auth.refresh_tokens(account_id);
+CREATE INDEX ix_refresh_tokens_expires_at ON auth.refresh_tokens(expires_at);
 
 CREATE TABLE game.game_states (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
