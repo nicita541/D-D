@@ -139,19 +139,19 @@ namespace backend.Repositories
                 var playerId = await GetPlayerIdByGameStateAsync(connection, transaction, gameStateId, cancellationToken);
 
                 await UpdatePlayerProfileAsync(connection, transaction, playerId, player, cancellationToken);
-                await UpdateProgressionAsync(connection, transaction, playerId, player, cancellationToken);
-                await UpdateResourcesAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateProgressionAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateResourcesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
                 await ReplaceLimitedResourcesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
                 await ReplaceConditionsAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
-                await UpdateAttributesAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateAttributesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
                 await ReplaceProficienciesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
                 await ReplaceAbilitiesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
-                await UpdateWealthAsync(connection, transaction, playerId, player, cancellationToken);
-                await UpdateNeedsAsync(connection, transaction, playerId, player, cancellationToken);
-                await UpdateCombatStatsAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateWealthAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateNeedsAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateCombatStatsAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
 
                 var itemMap = await ReplaceInventoryAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
-                await UpdateEquippedGearAsync(connection, transaction, playerId, player, itemMap, cancellationToken);
+                await UpdateEquippedGearAsync(connection, transaction, gameStateId, playerId, player, itemMap, cancellationToken);
                 await ReplaceAttacksAsync(connection, transaction, gameStateId, playerId, player, itemMap, cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
@@ -219,6 +219,7 @@ namespace backend.Repositories
         private static async Task UpdateProgressionAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -226,6 +227,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.player_progression
                 (
+                    game_state_id,
                     player_id,
                     level,
                     experience,
@@ -233,6 +235,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @level,
                     @experience,
@@ -240,12 +243,14 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     level = EXCLUDED.level,
                     experience = EXCLUDED.experience,
                     experience_to_next_level = EXCLUDED.experience_to_next_level;
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("level", player.Progression.Level);
             command.Parameters.AddWithValue("experience", player.Progression.Experience);
@@ -257,6 +262,7 @@ namespace backend.Repositories
         private static async Task UpdateResourcesAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -264,6 +270,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.player_resources
                 (
+                    game_state_id,
                     player_id,
                     hp_max,
                     hp_current,
@@ -277,6 +284,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @hpMax,
                     @hpCurrent,
@@ -290,6 +298,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     hp_max = EXCLUDED.hp_max,
                     hp_current = EXCLUDED.hp_current,
                     mana_max = EXCLUDED.mana_max,
@@ -302,6 +311,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("hpMax", player.Resources.Hp.Max);
             command.Parameters.AddWithValue("hpCurrent", player.Resources.Hp.Current);
@@ -437,6 +447,7 @@ namespace backend.Repositories
         private static async Task UpdateAttributesAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -444,6 +455,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.player_attributes
                 (
+                    game_state_id,
                     player_id,
                     strength,
                     dexterity,
@@ -457,6 +469,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @strength,
                     @dexterity,
@@ -470,6 +483,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     strength = EXCLUDED.strength,
                     dexterity = EXCLUDED.dexterity,
                     constitution = EXCLUDED.constitution,
@@ -482,6 +496,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("strength", player.Attributes.Strength);
             command.Parameters.AddWithValue("dexterity", player.Attributes.Dexterity);
@@ -670,6 +685,7 @@ namespace backend.Repositories
         private static async Task UpdateWealthAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -677,6 +693,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.wealth
                 (
+                    game_state_id,
                     player_id,
                     copper,
                     silver,
@@ -685,6 +702,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @copper,
                     @silver,
@@ -693,6 +711,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     copper = EXCLUDED.copper,
                     silver = EXCLUDED.silver,
                     gold = EXCLUDED.gold,
@@ -700,6 +719,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("copper", player.Wealth.Coins.Copper);
             command.Parameters.AddWithValue("silver", player.Wealth.Coins.Silver);
@@ -712,6 +732,7 @@ namespace backend.Repositories
         private static async Task UpdateNeedsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -719,6 +740,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.player_needs
                 (
+                    game_state_id,
                     player_id,
                     food_size,
                     food_per_day,
@@ -734,6 +756,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @foodSize,
                     @foodPerDay,
@@ -749,6 +772,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     food_size = EXCLUDED.food_size,
                     food_per_day = EXCLUDED.food_per_day,
                     food_remaining = EXCLUDED.food_remaining,
@@ -763,6 +787,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("foodSize", player.Needs.Food.Size);
             command.Parameters.AddWithValue("foodPerDay", DbValue.ToDb(player.Needs.Food.PerDay));
@@ -782,6 +807,7 @@ namespace backend.Repositories
         private static async Task UpdateCombatStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             CancellationToken cancellationToken)
@@ -789,6 +815,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.combat_stats
                 (
+                    game_state_id,
                     player_id,
                     armor_class,
                     proficiency_bonus,
@@ -797,6 +824,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @armorClass,
                     @proficiencyBonus,
@@ -805,6 +833,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     armor_class = EXCLUDED.armor_class,
                     proficiency_bonus = EXCLUDED.proficiency_bonus,
                     in_combat = EXCLUDED.in_combat,
@@ -812,6 +841,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("armorClass", player.Combat.ArmorClass);
             command.Parameters.AddWithValue("proficiencyBonus", player.Combat.ProficiencyBonus);
@@ -1127,6 +1157,7 @@ namespace backend.Repositories
         private static async Task UpdateEquippedGearAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
+            Guid gameStateId,
             Guid playerId,
             Player player,
             Dictionary<string, Guid> itemMap,
@@ -1135,6 +1166,7 @@ namespace backend.Repositories
             const string sql = """
                 INSERT INTO game.equipped_gear
                 (
+                    game_state_id,
                     player_id,
                     head_item_id,
                     body_item_id,
@@ -1149,6 +1181,7 @@ namespace backend.Repositories
                 )
                 VALUES
                 (
+                    @gameStateId,
                     @playerId,
                     @headItemId,
                     @bodyItemId,
@@ -1163,6 +1196,7 @@ namespace backend.Repositories
                 )
                 ON CONFLICT (player_id)
                 DO UPDATE SET
+                    game_state_id = EXCLUDED.game_state_id,
                     head_item_id = EXCLUDED.head_item_id,
                     body_item_id = EXCLUDED.body_item_id,
                     hands_item_id = EXCLUDED.hands_item_id,
@@ -1176,6 +1210,7 @@ namespace backend.Repositories
             """;
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("playerId", playerId);
             DbValue.AddUuidParameter(command, "headItemId", ResolveItemId(player.Equipment.HeadItemId, itemMap));
             DbValue.AddUuidParameter(command, "bodyItemId", ResolveItemId(player.Equipment.BodyItemId, itemMap));
