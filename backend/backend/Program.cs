@@ -22,6 +22,7 @@ namespace backend
 
             var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
                 ?? throw new InvalidOperationException("Jwt options are not configured.");
+
             if (string.IsNullOrWhiteSpace(jwtOptions.Secret) || jwtOptions.Secret.Length < 32)
             {
                 throw new InvalidOperationException("Jwt:Secret must be configured and contain at least 32 characters.");
@@ -39,6 +40,14 @@ namespace backend
                     BearerFormat = "JWT",
                     In = ParameterLocation.Header,
                     Description = "JWT Bearer token"
+                });
+
+                options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecuritySchemeReference("Bearer", document),
+                        new List<string>()
+                    }
                 });
             });
 
@@ -58,6 +67,7 @@ namespace backend
                         ClockSkew = TimeSpan.FromSeconds(30)
                     };
                 });
+
             builder.Services.AddAuthorization();
 
             // PostgreSQL

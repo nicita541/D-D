@@ -40,6 +40,12 @@ services:
 
       ConnectionStrings__DndDatabase: Host=postgres;Port=5432;Database=dnd;Username=dnd_user;Password=dnd_password
 
+      Jwt__Issuer: DndBackend
+      Jwt__Audience: DndClient
+      Jwt__Secret: DEV_ONLY_SUPER_SECRET_KEY_CHANGE_ME_1234567890
+      Jwt__AccessTokenMinutes: 30
+      Jwt__RefreshTokenDays: 30
+
       Ollama__BaseUrl: http://llm:11434
     depends_on:
       - postgres
