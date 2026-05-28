@@ -1,14 +1,12 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using backend.Infrastructure.Database;
 using backend.Models;
 using Npgsql;
-using NpgsqlTypes;
 
-namespace backend.Services
+namespace backend.Repositories
 {
     /// <summary>
-    /// Compatibility service for the old PlayersController.
+    /// Compatibility repository for the old Players API.
     ///
     /// The database is now GameState-based. A Player is stored inside a game_state,
     /// and the readable document comes from game.game_state_documents.
@@ -40,27 +38,24 @@ namespace backend.Services
     /// - game.limited_resources
     /// - game.game_state_documents
     /// </summary>
-    public class PlayerDatabaseService
+    public sealed class PlayerRepository : IPlayerRepository
     {
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNameCaseInsensitive = true
         };
 
-        private readonly string _connectionString;
-
-        public PlayerDatabaseService(IConfiguration configuration)
+        private readonly IPostgresConnectionFactory _connectionFactory;
+        public PlayerRepository(IPostgresConnectionFactory connectionFactory)
         {
-            _connectionString = configuration.GetConnectionString("DndDatabase")
-                ?? throw new InvalidOperationException("Connection string 'DndDatabase' not found.");
+            _connectionFactory = connectionFactory;
         }
 
-        public async Task<List<Player>> GetPlayersAsync()
+        public async Task<List<Player>> GetPlayersAsync(CancellationToken cancellationToken)
         {
             var players = new List<Player>();
 
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
 
             const string sql = """
                 SELECT (data->'игрок')::text AS player_json
@@ -69,9 +64,9 @@ namespace backend.Services
             """;
 
             await using var command = new NpgsqlCommand(sql, connection);
-            await using var reader = await command.ExecuteReaderAsync();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-            while (await reader.ReadAsync())
+            while (await reader.ReadAsync(cancellationToken))
             {
                 var json = reader.GetString(0);
                 var player = JsonSerializer.Deserialize<Player>(json, JsonOptions);
@@ -85,10 +80,9 @@ namespace backend.Services
             return players;
         }
 
-        public async Task<Player?> GetPlayerByIdAsync(Guid id)
+        public async Task<Player?> GetPlayerByIdAsync(Guid id, CancellationToken cancellationToken)
         {
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
 
             const string sql = """
                 SELECT (d.data->'игрок')::text AS player_json
@@ -101,7 +95,7 @@ namespace backend.Services
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("id", id);
 
-            var result = await command.ExecuteScalarAsync();
+            var result = await command.ExecuteScalarAsync(cancellationToken);
 
             if (result == null || result == DBNull.Value)
             {
@@ -120,130 +114,60 @@ namespace backend.Services
         /// player with the provided Player data. This keeps old POST /api/Players usable
         /// until the real GameState/Auth API is implemented.
         /// </summary>
-        public async Task<Guid> CreatePlayerAsync(Player player)
+        public async Task<Guid> CreatePlayerAsync(Player player, CancellationToken cancellationToken)
         {
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
 
-            await using var transaction = await connection.BeginTransactionAsync();
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                var accountId = await EnsureDevelopmentAccountAsync(connection, transaction);
+                var accountId = await DevelopmentAccountHelper.EnsureDevelopmentAccountAsync(
+                    connection,
+                    transaction,
+                    cancellationToken);
                 var saveName = string.IsNullOrWhiteSpace(player.Character.Name)
                     ? "Новая игра"
                     : player.Character.Name;
 
-                var gameStateId = await CreateGameStateAsync(connection, transaction, accountId, saveName);
-                var playerId = await GetPlayerIdByGameStateAsync(connection, transaction, gameStateId);
+                var gameStateId = await GameStateDatabaseHelper.CreateNewGameAsync(
+                    connection,
+                    transaction,
+                    accountId,
+                    saveName,
+                    cancellationToken);
+                var playerId = await GetPlayerIdByGameStateAsync(connection, transaction, gameStateId, cancellationToken);
 
-                await UpdatePlayerProfileAsync(connection, transaction, playerId, player);
-                await UpdateProgressionAsync(connection, transaction, playerId, player);
-                await UpdateResourcesAsync(connection, transaction, playerId, player);
-                await ReplaceLimitedResourcesAsync(connection, transaction, gameStateId, playerId, player);
-                await ReplaceConditionsAsync(connection, transaction, gameStateId, playerId, player);
-                await UpdateAttributesAsync(connection, transaction, playerId, player);
-                await ReplaceProficienciesAsync(connection, transaction, gameStateId, playerId, player);
-                await ReplaceAbilitiesAsync(connection, transaction, gameStateId, playerId, player);
-                await UpdateWealthAsync(connection, transaction, playerId, player);
-                await UpdateNeedsAsync(connection, transaction, playerId, player);
-                await UpdateCombatStatsAsync(connection, transaction, playerId, player);
+                await UpdatePlayerProfileAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateProgressionAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateResourcesAsync(connection, transaction, playerId, player, cancellationToken);
+                await ReplaceLimitedResourcesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await ReplaceConditionsAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateAttributesAsync(connection, transaction, playerId, player, cancellationToken);
+                await ReplaceProficienciesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await ReplaceAbilitiesAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateWealthAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateNeedsAsync(connection, transaction, playerId, player, cancellationToken);
+                await UpdateCombatStatsAsync(connection, transaction, playerId, player, cancellationToken);
 
-                var itemMap = await ReplaceInventoryAsync(connection, transaction, gameStateId, playerId, player);
-                await UpdateEquippedGearAsync(connection, transaction, playerId, player, itemMap);
-                await ReplaceAttacksAsync(connection, transaction, gameStateId, playerId, player, itemMap);
+                var itemMap = await ReplaceInventoryAsync(connection, transaction, gameStateId, playerId, player, cancellationToken);
+                await UpdateEquippedGearAsync(connection, transaction, playerId, player, itemMap, cancellationToken);
+                await ReplaceAttacksAsync(connection, transaction, gameStateId, playerId, player, itemMap, cancellationToken);
 
-                await transaction.CommitAsync();
+                await transaction.CommitAsync(cancellationToken);
                 return playerId;
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(cancellationToken);
                 throw;
             }
         }
-
-        /// <summary>
-        /// Kept for old code samples/controllers that called SavePlayersAsync after mutating a Player in memory.
-        /// PostgreSQL writes are now done directly in each method, so this is intentionally a no-op.
-        /// </summary>
-        public Task SavePlayersAsync()
-        {
-            return Task.CompletedTask;
-        }
-
-        private static async Task<Guid> EnsureDevelopmentAccountAsync(
-            NpgsqlConnection connection,
-            NpgsqlTransaction transaction)
-        {
-            const string selectSql = """
-                SELECT id
-                FROM auth.accounts
-                WHERE email = 'dev-local@example.com'
-                LIMIT 1;
-            """;
-
-            await using (var selectCommand = new NpgsqlCommand(selectSql, connection, transaction))
-            {
-                var existing = await selectCommand.ExecuteScalarAsync();
-                if (existing is Guid existingId)
-                {
-                    return existingId;
-                }
-            }
-
-            var accountId = Guid.NewGuid();
-            var fakeHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"dev-local:{accountId}"))).ToLowerInvariant();
-
-            const string insertSql = """
-                INSERT INTO auth.accounts
-                (
-                    id,
-                    email,
-                    username,
-                    password_hash,
-                    display_name
-                )
-                VALUES
-                (
-                    @id,
-                    'dev-local@example.com',
-                    'dev-local',
-                    @passwordHash,
-                    'Development Local Account'
-                );
-            """;
-
-            await using var insertCommand = new NpgsqlCommand(insertSql, connection, transaction);
-            insertCommand.Parameters.AddWithValue("id", accountId);
-            insertCommand.Parameters.AddWithValue("passwordHash", fakeHash);
-            await insertCommand.ExecuteNonQueryAsync();
-
-            return accountId;
-        }
-
-        private static async Task<Guid> CreateGameStateAsync(
-            NpgsqlConnection connection,
-            NpgsqlTransaction transaction,
-            Guid accountId,
-            string saveName)
-        {
-            const string sql = """
-                SELECT game.create_new_game(@accountId, @saveName);
-            """;
-
-            await using var command = new NpgsqlCommand(sql, connection, transaction);
-            command.Parameters.AddWithValue("accountId", accountId);
-            command.Parameters.AddWithValue("saveName", saveName);
-
-            return (Guid)(await command.ExecuteScalarAsync()
-                ?? throw new InvalidOperationException("game.create_new_game did not return a game_state id."));
-        }
-
         private static async Task<Guid> GetPlayerIdByGameStateAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
-            Guid gameStateId)
+            Guid gameStateId,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 SELECT id
@@ -255,7 +179,7 @@ namespace backend.Services
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("gameStateId", gameStateId);
 
-            return (Guid)(await command.ExecuteScalarAsync()
+            return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("New game_state does not contain a player."));
         }
 
@@ -263,7 +187,8 @@ namespace backend.Services
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 UPDATE game.players
@@ -280,22 +205,23 @@ namespace backend.Services
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("playerId", playerId);
-            command.Parameters.AddWithValue("name", NullIfEmpty(player.Character.Name) ?? "Безымянный");
-            command.Parameters.AddWithValue("background", ToDb(player.Character.Background));
-            command.Parameters.AddWithValue("species", ToDb(player.Character.Species));
-            command.Parameters.AddWithValue("className", ToDb(player.Character.Class));
-            command.Parameters.AddWithValue("subclass", ToDb(player.Character.Subclass));
-            command.Parameters.AddWithValue("description", ToDb(player.Character.Description));
-            command.Parameters.AddWithValue("alignment", ToDb(player.Character.Alignment));
+            command.Parameters.AddWithValue("name", DbValue.NullIfEmpty(player.Character.Name) ?? "Безымянный");
+            command.Parameters.AddWithValue("background", DbValue.ToDb(player.Character.Background));
+            command.Parameters.AddWithValue("species", DbValue.ToDb(player.Character.Species));
+            command.Parameters.AddWithValue("className", DbValue.ToDb(player.Character.Class));
+            command.Parameters.AddWithValue("subclass", DbValue.ToDb(player.Character.Subclass));
+            command.Parameters.AddWithValue("description", DbValue.ToDb(player.Character.Description));
+            command.Parameters.AddWithValue("alignment", DbValue.ToDb(player.Character.Alignment));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateProgressionAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.player_progression
@@ -325,14 +251,15 @@ namespace backend.Services
             command.Parameters.AddWithValue("experience", player.Progression.Experience);
             command.Parameters.AddWithValue("experienceToNextLevel", player.Progression.ExperienceToNextLevel);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateResourcesAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.player_resources
@@ -386,7 +313,7 @@ namespace backend.Services
             command.Parameters.AddWithValue("deathSavesSuccesses", player.Resources.DeathSaves.Successes);
             command.Parameters.AddWithValue("deathSavesFailures", player.Resources.DeathSaves.Failures);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task ReplaceLimitedResourcesAsync(
@@ -394,13 +321,14 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid gameStateId,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
-            await DeleteByPlayerAsync(connection, transaction, "game.limited_resources", playerId);
+            await DeleteByPlayerAsync(connection, transaction, "game.limited_resources", playerId, cancellationToken);
 
             foreach (var resource in player.Resources.LimitedResources)
             {
-                var resourceId = ParseGuidOrNew(resource.Id);
+                var resourceId = DbValue.ParseGuidOrNew(resource.Id);
 
                 const string sql = """
                     INSERT INTO game.limited_resources
@@ -434,7 +362,7 @@ namespace backend.Services
                 command.Parameters.AddWithValue("currentValue", resource.Current);
                 command.Parameters.AddWithValue("recovery", resource.Recovery);
 
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(cancellationToken);
             }
         }
 
@@ -443,13 +371,14 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid gameStateId,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
-            await DeleteByPlayerAsync(connection, transaction, "game.conditions", playerId);
+            await DeleteByPlayerAsync(connection, transaction, "game.conditions", playerId, cancellationToken);
 
             foreach (var condition in player.Resources.Conditions)
             {
-                var conditionId = ParseGuidOrNew(condition.Id);
+                var conditionId = DbValue.ParseGuidOrNew(condition.Id);
 
                 const string sql = """
                     INSERT INTO game.conditions
@@ -491,17 +420,17 @@ namespace backend.Services
                 command.Parameters.AddWithValue("gameStateId", gameStateId);
                 command.Parameters.AddWithValue("playerId", playerId);
                 command.Parameters.AddWithValue("name", condition.Name);
-                command.Parameters.AddWithValue("type", NullIfEmpty(condition.Type) ?? "effect");
-                command.Parameters.AddWithValue("description", ToDb(condition.Description));
-                command.Parameters.AddWithValue("source", ToDb(condition.Source));
-                command.Parameters.AddWithValue("remainingTurns", ToDb(condition.RemainingTurns));
+                command.Parameters.AddWithValue("type", DbValue.NullIfEmpty(condition.Type) ?? "effect");
+                command.Parameters.AddWithValue("description", DbValue.ToDb(condition.Description));
+                command.Parameters.AddWithValue("source", DbValue.ToDb(condition.Source));
+                command.Parameters.AddWithValue("remainingTurns", DbValue.ToDb(condition.RemainingTurns));
                 command.Parameters.AddWithValue("isPermanent", condition.IsPermanent);
                 command.Parameters.AddWithValue("stacks", condition.Stacks <= 0 ? 1 : condition.Stacks);
-                command.Parameters.AddWithValue("maxStacks", ToDb(condition.MaxStacks));
+                command.Parameters.AddWithValue("maxStacks", DbValue.ToDb(condition.MaxStacks));
                 command.Parameters.AddWithValue("effects", JsonSerializer.Serialize(condition.Effects, JsonOptions));
                 command.Parameters.AddWithValue("tags", JsonSerializer.Serialize(condition.Tags, JsonOptions));
 
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(cancellationToken);
             }
         }
 
@@ -509,7 +438,8 @@ namespace backend.Services
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.player_attributes
@@ -563,7 +493,7 @@ namespace backend.Services
             command.Parameters.AddWithValue("speed", player.Attributes.Speed);
             command.Parameters.AddWithValue("perception", player.Attributes.Perception);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task ReplaceProficienciesAsync(
@@ -571,38 +501,39 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid gameStateId,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
-            await DeleteByPlayerAsync(connection, transaction, "game.player_proficiencies", playerId);
+            await DeleteByPlayerAsync(connection, transaction, "game.player_proficiencies", playerId, cancellationToken);
 
             foreach (var value in player.Proficiencies.Armor)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "armor", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "armor", value, cancellationToken);
             }
 
             foreach (var value in player.Proficiencies.Weapons)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "weapon", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "weapon", value, cancellationToken);
             }
 
             foreach (var value in player.Proficiencies.Skills)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "skill", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "skill", value, cancellationToken);
             }
 
             foreach (var value in player.Proficiencies.SavingThrows)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "saving_throw", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "saving_throw", value, cancellationToken);
             }
 
             foreach (var value in player.Proficiencies.Tools)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "tool", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "tool", value, cancellationToken);
             }
 
             foreach (var value in player.Proficiencies.Languages)
             {
-                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "language", value);
+                await InsertProficiencyAsync(connection, transaction, gameStateId, playerId, "language", value, cancellationToken);
             }
         }
 
@@ -612,7 +543,8 @@ namespace backend.Services
             Guid gameStateId,
             Guid playerId,
             string type,
-            string value)
+            string value,
+            CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -645,7 +577,7 @@ namespace backend.Services
             command.Parameters.AddWithValue("type", type);
             command.Parameters.AddWithValue("value", value);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task ReplaceAbilitiesAsync(
@@ -653,28 +585,29 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid gameStateId,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
-            await DeleteByPlayerAsync(connection, transaction, "game.abilities", playerId);
+            await DeleteByPlayerAsync(connection, transaction, "game.abilities", playerId, cancellationToken);
 
             foreach (var ability in player.Abilities.ClassAbilities)
             {
-                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "class", ability);
+                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "class", ability, cancellationToken);
             }
 
             foreach (var ability in player.Abilities.SpeciesAbilities)
             {
-                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "species", ability);
+                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "species", ability, cancellationToken);
             }
 
             foreach (var ability in player.Abilities.Feats)
             {
-                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "feat", ability);
+                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "feat", ability, cancellationToken);
             }
 
             foreach (var ability in player.Abilities.Spells)
             {
-                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "spell", ability);
+                await InsertAbilityAsync(connection, transaction, gameStateId, playerId, "spell", ability, cancellationToken);
             }
         }
 
@@ -684,10 +617,11 @@ namespace backend.Services
             Guid gameStateId,
             Guid playerId,
             string category,
-            Ability ability)
+            Ability ability,
+            CancellationToken cancellationToken)
         {
-            var abilityId = ParseGuidOrNew(ability.Id);
-            var costResourceId = ParseNullableGuid(ability.Cost?.ResourceId);
+            var abilityId = DbValue.ParseGuidOrNew(ability.Id);
+            var costResourceId = DbValue.ParseNullableGuid(ability.Cost?.ResourceId);
 
             const string sql = """
                 INSERT INTO game.abilities
@@ -724,20 +658,21 @@ namespace backend.Services
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("category", category);
             command.Parameters.AddWithValue("name", ability.Name);
-            command.Parameters.AddWithValue("description", ToDb(ability.Description));
-            command.Parameters.AddWithValue("abilityType", NullIfEmpty(ability.Type) ?? "passive");
-            AddUuidParameter(command, "costResourceId", costResourceId);
-            command.Parameters.AddWithValue("costAmount", ToDb(ability.Cost?.Amount));
+            command.Parameters.AddWithValue("description", DbValue.ToDb(ability.Description));
+            command.Parameters.AddWithValue("abilityType", DbValue.NullIfEmpty(ability.Type) ?? "passive");
+            DbValue.AddUuidParameter(command, "costResourceId", costResourceId);
+            command.Parameters.AddWithValue("costAmount", DbValue.ToDb(ability.Cost?.Amount));
             command.Parameters.AddWithValue("effects", JsonSerializer.Serialize(ability.Effects, JsonOptions));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateWealthAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.wealth
@@ -771,14 +706,15 @@ namespace backend.Services
             command.Parameters.AddWithValue("gold", player.Wealth.Coins.Gold);
             command.Parameters.AddWithValue("platinum", player.Wealth.Coins.Platinum);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateNeedsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.player_needs
@@ -829,10 +765,10 @@ namespace backend.Services
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("playerId", playerId);
             command.Parameters.AddWithValue("foodSize", player.Needs.Food.Size);
-            command.Parameters.AddWithValue("foodPerDay", ToDb(player.Needs.Food.PerDay));
+            command.Parameters.AddWithValue("foodPerDay", DbValue.ToDb(player.Needs.Food.PerDay));
             command.Parameters.AddWithValue("foodRemaining", player.Needs.Food.Remaining);
             command.Parameters.AddWithValue("waterSize", player.Needs.Water.Size);
-            command.Parameters.AddWithValue("waterPerDay", ToDb(player.Needs.Water.PerDay));
+            command.Parameters.AddWithValue("waterPerDay", DbValue.ToDb(player.Needs.Water.PerDay));
             command.Parameters.AddWithValue("waterRemaining", player.Needs.Water.Remaining);
             command.Parameters.AddWithValue("carryCapacityMax", player.Needs.CarryingCapacity.Max);
             command.Parameters.AddWithValue("carryCurrentWeight", player.Needs.CarryingCapacity.CurrentWeight);
@@ -840,14 +776,15 @@ namespace backend.Services
             command.Parameters.AddWithValue("movementMetersPerTurn", player.Needs.Movement.MetersPerTurn);
             command.Parameters.AddWithValue("movementKmPerDay", player.Needs.Movement.KmPerDay);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateCombatStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.combat_stats
@@ -881,7 +818,7 @@ namespace backend.Services
             command.Parameters.AddWithValue("inCombat", player.Combat.InCombat);
             command.Parameters.AddWithValue("initiativeRoll", player.Combat.InitiativeRoll);
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task<Dictionary<string, Guid>> ReplaceInventoryAsync(
@@ -889,7 +826,8 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid gameStateId,
             Guid playerId,
-            Player player)
+            Player player,
+            CancellationToken cancellationToken)
         {
             await using (var deleteConsumables = new NpgsqlCommand(
                 """
@@ -908,7 +846,7 @@ namespace backend.Services
             {
                 deleteConsumables.Parameters.AddWithValue("gameStateId", gameStateId);
                 deleteConsumables.Parameters.AddWithValue("playerId", playerId);
-                await deleteConsumables.ExecuteNonQueryAsync();
+                await deleteConsumables.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await using (var deleteArmor = new NpgsqlCommand(
@@ -928,7 +866,7 @@ namespace backend.Services
             {
                 deleteArmor.Parameters.AddWithValue("gameStateId", gameStateId);
                 deleteArmor.Parameters.AddWithValue("playerId", playerId);
-                await deleteArmor.ExecuteNonQueryAsync();
+                await deleteArmor.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await using (var deleteWeapon = new NpgsqlCommand(
@@ -948,7 +886,7 @@ namespace backend.Services
             {
                 deleteWeapon.Parameters.AddWithValue("gameStateId", gameStateId);
                 deleteWeapon.Parameters.AddWithValue("playerId", playerId);
-                await deleteWeapon.ExecuteNonQueryAsync();
+                await deleteWeapon.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await using (var deleteItems = new NpgsqlCommand(
@@ -963,14 +901,14 @@ namespace backend.Services
             {
                 deleteItems.Parameters.AddWithValue("gameStateId", gameStateId);
                 deleteItems.Parameters.AddWithValue("playerId", playerId);
-                await deleteItems.ExecuteNonQueryAsync();
+                await deleteItems.ExecuteNonQueryAsync(cancellationToken);
             }
 
             var itemMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in player.Inventory)
             {
-                var itemId = ParseGuidOrNew(item.Id);
+                var itemId = DbValue.ParseGuidOrNew(item.Id);
 
                 if (!string.IsNullOrWhiteSpace(item.Id))
                 {
@@ -1035,16 +973,16 @@ namespace backend.Services
                 {
                     command.Parameters.AddWithValue("id", itemId);
                     command.Parameters.AddWithValue("gameStateId", gameStateId);
-                    command.Parameters.AddWithValue("templateId", ToDb(item.TemplateId));
+                    command.Parameters.AddWithValue("templateId", DbValue.ToDb(item.TemplateId));
                     command.Parameters.AddWithValue("name", item.Name);
-                    command.Parameters.AddWithValue("itemType", NullIfEmpty(item.Type) ?? "item");
-                    command.Parameters.AddWithValue("subtype", ToDb(item.Subtype));
-                    command.Parameters.AddWithValue("description", ToDb(item.Description));
+                    command.Parameters.AddWithValue("itemType", DbValue.NullIfEmpty(item.Type) ?? "item");
+                    command.Parameters.AddWithValue("subtype", DbValue.ToDb(item.Subtype));
+                    command.Parameters.AddWithValue("description", DbValue.ToDb(item.Description));
                     command.Parameters.AddWithValue("quantity", item.Quantity <= 0 ? 1 : item.Quantity);
                     command.Parameters.AddWithValue("stackable", item.Stackable);
                     command.Parameters.AddWithValue("weightEach", item.WeightEach);
-                    command.Parameters.AddWithValue("condition", NullIfEmpty(item.Condition) ?? "normal");
-                    command.Parameters.AddWithValue("rarity", NullIfEmpty(item.Rarity) ?? "common");
+                    command.Parameters.AddWithValue("condition", DbValue.NullIfEmpty(item.Condition) ?? "normal");
+                    command.Parameters.AddWithValue("rarity", DbValue.NullIfEmpty(item.Rarity) ?? "common");
                     command.Parameters.AddWithValue("isMagical", item.IsMagical);
                     command.Parameters.AddWithValue("priceCopper", item.Price?.Copper ?? 0);
                     command.Parameters.AddWithValue("priceSilver", item.Price?.Silver ?? 0);
@@ -1053,22 +991,22 @@ namespace backend.Services
                     command.Parameters.AddWithValue("tags", JsonSerializer.Serialize(item.Tags, JsonOptions));
                     command.Parameters.AddWithValue("playerId", playerId);
 
-                    await command.ExecuteNonQueryAsync();
+                    await command.ExecuteNonQueryAsync(cancellationToken);
                 }
 
                 if (item.Weapon != null)
                 {
-                    await InsertWeaponStatsAsync(connection, transaction, itemId, item.Weapon);
+                    await InsertWeaponStatsAsync(connection, transaction, itemId, item.Weapon, cancellationToken);
                 }
 
                 if (item.Armor != null)
                 {
-                    await InsertArmorStatsAsync(connection, transaction, itemId, item.Armor);
+                    await InsertArmorStatsAsync(connection, transaction, itemId, item.Armor, cancellationToken);
                 }
 
                 if (item.Consumable != null)
                 {
-                    await InsertConsumableStatsAsync(connection, transaction, itemId, item.Consumable);
+                    await InsertConsumableStatsAsync(connection, transaction, itemId, item.Consumable, cancellationToken);
                 }
             }
 
@@ -1079,7 +1017,8 @@ namespace backend.Services
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid itemId,
-            WeaponStats weapon)
+            WeaponStats weapon,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.item_weapon_stats
@@ -1110,17 +1049,18 @@ namespace backend.Services
             command.Parameters.AddWithValue("damageType", weapon.DamageType);
             command.Parameters.AddWithValue("attackBonus", weapon.AttackBonus);
             command.Parameters.AddWithValue("damageBonus", weapon.DamageBonus);
-            command.Parameters.AddWithValue("range", ToDb(weapon.Range));
+            command.Parameters.AddWithValue("range", DbValue.ToDb(weapon.Range));
             command.Parameters.AddWithValue("properties", JsonSerializer.Serialize(weapon.Properties, JsonOptions));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task InsertArmorStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid itemId,
-            ArmorStats armor)
+            ArmorStats armor,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.item_armor_stats
@@ -1147,18 +1087,19 @@ namespace backend.Services
             command.Parameters.AddWithValue("itemId", itemId);
             command.Parameters.AddWithValue("armorClass", armor.ArmorClass);
             command.Parameters.AddWithValue("armorClassBonus", armor.ArmorClassBonus);
-            command.Parameters.AddWithValue("armorType", ToDb(armor.ArmorType));
+            command.Parameters.AddWithValue("armorType", DbValue.ToDb(armor.ArmorType));
             command.Parameters.AddWithValue("stealthDisadvantage", armor.StealthDisadvantage);
-            command.Parameters.AddWithValue("strengthRequirement", ToDb(armor.StrengthRequirement));
+            command.Parameters.AddWithValue("strengthRequirement", DbValue.ToDb(armor.StrengthRequirement));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task InsertConsumableStatsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Guid itemId,
-            ConsumableStats consumable)
+            ConsumableStats consumable,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.item_consumable_stats
@@ -1180,7 +1121,7 @@ namespace backend.Services
             command.Parameters.AddWithValue("uses", consumable.Uses);
             command.Parameters.AddWithValue("effects", JsonSerializer.Serialize(consumable.Effects, JsonOptions));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task UpdateEquippedGearAsync(
@@ -1188,7 +1129,8 @@ namespace backend.Services
             NpgsqlTransaction transaction,
             Guid playerId,
             Player player,
-            Dictionary<string, Guid> itemMap)
+            Dictionary<string, Guid> itemMap,
+            CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO game.equipped_gear
@@ -1235,18 +1177,18 @@ namespace backend.Services
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("playerId", playerId);
-            AddUuidParameter(command, "headItemId", ResolveItemId(player.Equipment.HeadItemId, itemMap));
-            AddUuidParameter(command, "bodyItemId", ResolveItemId(player.Equipment.BodyItemId, itemMap));
-            AddUuidParameter(command, "handsItemId", ResolveItemId(player.Equipment.HandsItemId, itemMap));
-            AddUuidParameter(command, "legsItemId", ResolveItemId(player.Equipment.LegsItemId, itemMap));
-            AddUuidParameter(command, "feetItemId", ResolveItemId(player.Equipment.FeetItemId, itemMap));
-            AddUuidParameter(command, "mainHandItemId", ResolveItemId(player.Equipment.MainHandItemId, itemMap));
-            AddUuidParameter(command, "offHandItemId", ResolveItemId(player.Equipment.OffHandItemId, itemMap));
-            AddUuidParameter(command, "amuletItemId", ResolveItemId(player.Equipment.AmuletItemId, itemMap));
-            AddUuidParameter(command, "ring1ItemId", ResolveItemId(player.Equipment.Ring1ItemId, itemMap));
-            AddUuidParameter(command, "ring2ItemId", ResolveItemId(player.Equipment.Ring2ItemId, itemMap));
+            DbValue.AddUuidParameter(command, "headItemId", ResolveItemId(player.Equipment.HeadItemId, itemMap));
+            DbValue.AddUuidParameter(command, "bodyItemId", ResolveItemId(player.Equipment.BodyItemId, itemMap));
+            DbValue.AddUuidParameter(command, "handsItemId", ResolveItemId(player.Equipment.HandsItemId, itemMap));
+            DbValue.AddUuidParameter(command, "legsItemId", ResolveItemId(player.Equipment.LegsItemId, itemMap));
+            DbValue.AddUuidParameter(command, "feetItemId", ResolveItemId(player.Equipment.FeetItemId, itemMap));
+            DbValue.AddUuidParameter(command, "mainHandItemId", ResolveItemId(player.Equipment.MainHandItemId, itemMap));
+            DbValue.AddUuidParameter(command, "offHandItemId", ResolveItemId(player.Equipment.OffHandItemId, itemMap));
+            DbValue.AddUuidParameter(command, "amuletItemId", ResolveItemId(player.Equipment.AmuletItemId, itemMap));
+            DbValue.AddUuidParameter(command, "ring1ItemId", ResolveItemId(player.Equipment.Ring1ItemId, itemMap));
+            DbValue.AddUuidParameter(command, "ring2ItemId", ResolveItemId(player.Equipment.Ring2ItemId, itemMap));
 
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         private static async Task ReplaceAttacksAsync(
@@ -1255,13 +1197,14 @@ namespace backend.Services
             Guid gameStateId,
             Guid playerId,
             Player player,
-            Dictionary<string, Guid> itemMap)
+            Dictionary<string, Guid> itemMap,
+            CancellationToken cancellationToken)
         {
-            await DeleteByPlayerAsync(connection, transaction, "game.attacks", playerId);
+            await DeleteByPlayerAsync(connection, transaction, "game.attacks", playerId, cancellationToken);
 
             foreach (var attack in player.Combat.Attacks)
             {
-                var attackId = ParseGuidOrNew(attack.Id);
+                var attackId = DbValue.ParseGuidOrNew(attack.Id);
                 var itemId = ResolveItemId(attack.ItemId, itemMap);
 
                 const string sql = """
@@ -1293,13 +1236,13 @@ namespace backend.Services
                 command.Parameters.AddWithValue("id", attackId);
                 command.Parameters.AddWithValue("gameStateId", gameStateId);
                 command.Parameters.AddWithValue("playerId", playerId);
-                AddUuidParameter(command, "itemId", itemId);
+                DbValue.AddUuidParameter(command, "itemId", itemId);
                 command.Parameters.AddWithValue("name", attack.Name);
                 command.Parameters.AddWithValue("roll", attack.Roll);
                 command.Parameters.AddWithValue("damage", attack.Damage);
-                command.Parameters.AddWithValue("damageType", ToDb(attack.DamageType));
+                command.Parameters.AddWithValue("damageType", DbValue.ToDb(attack.DamageType));
 
-                await command.ExecuteNonQueryAsync();
+                await command.ExecuteNonQueryAsync(cancellationToken);
             }
         }
 
@@ -1307,29 +1250,15 @@ namespace backend.Services
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             string tableName,
-            Guid playerId)
+            Guid playerId,
+            CancellationToken cancellationToken)
         {
             var sql = $"DELETE FROM {tableName} WHERE player_id = @playerId;";
 
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("playerId", playerId);
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
-
-        private static Guid ParseGuidOrNew(string? value)
-        {
-            return Guid.TryParse(value, out var parsed)
-                ? parsed
-                : Guid.NewGuid();
-        }
-
-        private static Guid? ParseNullableGuid(string? value)
-        {
-            return Guid.TryParse(value, out var parsed)
-                ? parsed
-                : null;
-        }
-
         private static Guid? ResolveItemId(string? value, IReadOnlyDictionary<string, Guid> itemMap)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -1345,27 +1274,6 @@ namespace backend.Services
             return itemMap.TryGetValue(value, out var mapped)
                 ? mapped
                 : null;
-        }
-
-        private static string? NullIfEmpty(string? value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? null : value;
-        }
-
-        private static object ToDb(string? value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
-        }
-
-        private static object ToDb(int? value)
-        {
-            return value.HasValue ? value.Value : DBNull.Value;
-        }
-
-        private static void AddUuidParameter(NpgsqlCommand command, string name, Guid? value)
-        {
-            var parameter = command.Parameters.Add(name, NpgsqlDbType.Uuid);
-            parameter.Value = value.HasValue ? value.Value : DBNull.Value;
         }
     }
 }
