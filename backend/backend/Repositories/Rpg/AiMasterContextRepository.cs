@@ -1,7 +1,6 @@
 using System.Text.Json;
 using backend.Infrastructure.Database;
 using Npgsql;
-
 namespace backend.Repositories.Rpg;
 
 public sealed class AiMasterContextRepository : IAiMasterContextRepository
