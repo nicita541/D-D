@@ -105,32 +105,36 @@ public sealed class AuthRepository : IAuthRepository
         string tokenHash,
         DateTimeOffset expiresAt,
         string? createdByIp,
+        string? userAgent,
         CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            INSERT INTO auth.refresh_tokens
-            (
-                account_id,
-                token_hash,
-                expires_at,
-                created_by_ip
-            )
-            VALUES
-            (
-                @accountId,
-                @tokenHash,
-                @expiresAt,
-                @createdByIp
-            );
-        """;
+        INSERT INTO auth.refresh_tokens
+        (
+            account_id,
+            token_hash,
+            expires_at,
+            created_by_ip,
+            user_agent
+        )
+        VALUES
+        (
+            @accountId,
+            @tokenHash,
+            @expiresAt,
+            @createdByIp,
+            @userAgent
+        );
+    """;
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("tokenHash", tokenHash);
         command.Parameters.AddWithValue("expiresAt", expiresAt);
         command.Parameters.AddWithValue("createdByIp", RpgDbJson.DbString(createdByIp));
+        command.Parameters.AddWithValue("userAgent", RpgDbJson.DbString(userAgent));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -145,6 +149,10 @@ public sealed class AuthRepository : IAuthRepository
                 rt.token_hash,
                 rt.expires_at,
                 rt.revoked_at,
+                rt.created_by_ip,
+                rt.revoked_by_ip,
+                rt.user_agent,
+                rt.replaced_by_token_hash,
                 a.id,
                 a.email,
                 a.username,
@@ -167,13 +175,13 @@ public sealed class AuthRepository : IAuthRepository
         }
 
         var account = new AccountRecord(
-            reader.GetGuid(5),
-            reader.GetString(6),
-            reader.GetString(7),
-            reader.GetString(8),
-            reader.IsDBNull(9) ? null : reader.GetString(9),
+            reader.GetGuid(9),
             reader.GetString(10),
-            reader.GetBoolean(11));
+            reader.GetString(11),
+            reader.GetString(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            reader.GetString(14),
+            reader.GetBoolean(15));
 
         return new RefreshTokenRecord(
             reader.GetGuid(0),
@@ -181,27 +189,34 @@ public sealed class AuthRepository : IAuthRepository
             reader.GetString(2),
             reader.GetFieldValue<DateTimeOffset>(3),
             reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTimeOffset>(4),
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8),
             account);
     }
 
     public async Task<bool> RevokeRefreshTokenAsync(
         string tokenHash,
         string? revokedByIp,
+        string? replacedByTokenHash,
         CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            UPDATE auth.refresh_tokens
-            SET revoked_at = COALESCE(revoked_at, now()),
-                revoked_by_ip = COALESCE(@revokedByIp, revoked_by_ip)
-            WHERE token_hash = @tokenHash
-              AND revoked_at IS NULL;
-        """;
+        UPDATE auth.refresh_tokens
+        SET revoked_at = COALESCE(revoked_at, now()),
+            revoked_by_ip = COALESCE(@revokedByIp, revoked_by_ip),
+            replaced_by_token_hash = COALESCE(@replacedByTokenHash, replaced_by_token_hash)
+        WHERE token_hash = @tokenHash
+          AND revoked_at IS NULL;
+    """;
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("tokenHash", tokenHash);
         command.Parameters.AddWithValue("revokedByIp", RpgDbJson.DbString(revokedByIp));
+        command.Parameters.AddWithValue("replacedByTokenHash", RpgDbJson.DbString(replacedByTokenHash));
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 

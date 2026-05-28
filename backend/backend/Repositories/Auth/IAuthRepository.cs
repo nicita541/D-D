@@ -19,6 +19,7 @@ public interface IAuthRepository
         string tokenHash,
         DateTimeOffset expiresAt,
         string? createdByIp,
+        string? userAgent,
         CancellationToken cancellationToken);
 
     Task<RefreshTokenRecord?> FindRefreshTokenAsync(string tokenHash, CancellationToken cancellationToken);
@@ -26,5 +27,6 @@ public interface IAuthRepository
     Task<bool> RevokeRefreshTokenAsync(
         string tokenHash,
         string? revokedByIp,
+        string? replacedByTokenHash,
         CancellationToken cancellationToken);
 }
