@@ -15,7 +15,11 @@ CREATE TEMP TABLE smoke_context (
     party_id uuid,
     party_member_id uuid,
     combat_state_id uuid,
-    combat_participant_id uuid
+    combat_participant_id uuid,
+    monster_id uuid,
+    monster_participant_id uuid,
+    game_turn_id uuid,
+    game_change_id uuid
 ) ON COMMIT DROP;
 
 WITH inserted_account AS (
@@ -87,11 +91,16 @@ SELECT 'OK 03: refresh token created with token_hash metadata' AS check, refresh
 FROM smoke_context;
 
 DO $$
+DECLARE
+    v_account_id uuid;
 BEGIN
+    SELECT account_id INTO v_account_id
+    FROM smoke_context
+    LIMIT 1;
+
     BEGIN
         INSERT INTO auth.refresh_tokens (account_id, token_hash, expires_at)
-        SELECT account_id, 'smoke_refresh_token_hash', now() + interval '7 days'
-        FROM smoke_context;
+        VALUES (v_account_id, 'smoke_refresh_token_hash', now() + interval '7 days');
 
         RAISE EXCEPTION 'FAIL 04: duplicate refresh token hash was accepted';
     EXCEPTION
@@ -151,11 +160,6 @@ FROM smoke_context ctx
 JOIN game.game_states gs ON gs.id = ctx.game_state_id;
 
 UPDATE smoke_context ctx
-SET player_id = p.id
-FROM game.players p
-WHERE p.game_state_id = ctx.game_state_id;
-
-UPDATE smoke_context ctx
 SET location_id = gs.current_location_id
 FROM game.game_states gs
 WHERE gs.id = ctx.game_state_id;
@@ -165,7 +169,96 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM smoke_context ctx
-        JOIN game.game_states gs ON gs.id = ctx.game_state_id
+        JOIN game.locations l ON l.id = ctx.location_id
+        WHERE l.game_state_id = ctx.game_state_id
+    ) THEN
+        RAISE EXCEPTION 'FAIL 07: create_new_game did not create the starter location';
+    END IF;
+END;
+$$;
+
+SELECT 'OK 08: starter location exists' AS check, location_id
+FROM smoke_context;
+
+WITH inserted_player AS (
+    INSERT INTO game.players (
+        game_state_id,
+        account_id,
+        name,
+        background,
+        species,
+        class_name,
+        subclass,
+        description,
+        alignment
+    )
+    SELECT game_state_id,
+           account_id,
+           'Smoke Hero',
+           'Smoke test character.',
+           'human',
+           'fighter',
+           NULL,
+           'Temporary smoke test character.',
+           'neutral'
+    FROM smoke_context
+    RETURNING id
+)
+UPDATE smoke_context
+SET player_id = inserted_player.id
+FROM inserted_player;
+
+INSERT INTO game.player_progression (player_id, game_state_id, level, experience, experience_to_next_level)
+SELECT player_id, game_state_id, 1, 0, 300
+FROM smoke_context;
+
+INSERT INTO game.player_resources (
+    player_id,
+    game_state_id,
+    hp_max,
+    hp_current,
+    mana_max,
+    mana_current,
+    action_points_max,
+    action_points_current
+)
+SELECT player_id, game_state_id, 12, 12, 0, 0, 1, 1
+FROM smoke_context;
+
+INSERT INTO game.player_attributes (
+    player_id,
+    game_state_id,
+    strength,
+    dexterity,
+    constitution,
+    intelligence,
+    wisdom,
+    charisma
+)
+SELECT player_id, game_state_id, 16, 13, 15, 10, 12, 8
+FROM smoke_context;
+
+INSERT INTO game.wealth (player_id, game_state_id, gold)
+SELECT player_id, game_state_id, 25
+FROM smoke_context;
+
+INSERT INTO game.player_needs (player_id, game_state_id, carry_capacity_max, carry_unit)
+SELECT player_id, game_state_id, 50, 'kg'
+FROM smoke_context;
+
+INSERT INTO game.equipped_gear (player_id, game_state_id)
+SELECT player_id, game_state_id
+FROM smoke_context;
+
+INSERT INTO game.combat_stats (player_id, game_state_id, armor_class, proficiency_bonus)
+SELECT player_id, game_state_id, 16, 2
+FROM smoke_context;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM smoke_context ctx
         JOIN game.players p ON p.id = ctx.player_id
         JOIN game.player_progression pp ON pp.player_id = p.id
         JOIN game.player_resources pr ON pr.player_id = p.id
@@ -174,14 +267,15 @@ BEGIN
         JOIN game.player_needs pn ON pn.player_id = p.id
         JOIN game.equipped_gear eg ON eg.player_id = p.id
         JOIN game.combat_stats cs ON cs.player_id = p.id
-        JOIN game.locations l ON l.id = ctx.location_id
+        WHERE p.game_state_id = ctx.game_state_id
     ) THEN
-        RAISE EXCEPTION 'FAIL 07: create_new_game did not create all default rows';
+        RAISE EXCEPTION 'FAIL 08: test character domain rows were not created';
     END IF;
 END;
 $$;
 
-SELECT 'OK 08: default rows exist' AS check;
+SELECT 'OK 09: test character and character-domain rows exist' AS check, player_id
+FROM smoke_context;
 
 WITH inserted_sword AS (
     INSERT INTO game.item_instances (
@@ -221,7 +315,7 @@ INSERT INTO game.item_weapon_stats (game_state_id, item_id, damage_dice, damage_
 SELECT game_state_id, sword_id, '1d8', 'slashing', 5, 3
 FROM smoke_context;
 
-SELECT 'OK 09: sword item created in player inventory' AS check, sword_id
+SELECT 'OK 10: sword item created in player inventory' AS check, sword_id
 FROM smoke_context;
 
 WITH inserted_well AS (
@@ -239,7 +333,7 @@ UPDATE smoke_context
 SET well_id = inserted_well.id
 FROM inserted_well;
 
-SELECT 'OK 10: world object well created' AS check, well_id
+SELECT 'OK 11: world object well created' AS check, well_id
 FROM smoke_context;
 
 UPDATE game.equipped_gear eg
@@ -255,12 +349,12 @@ BEGIN
         JOIN game.equipped_gear eg ON eg.player_id = ctx.player_id
         WHERE eg.main_hand_item_id = ctx.sword_id
     ) THEN
-        RAISE EXCEPTION 'FAIL 11: sword was not equipped in main_hand_item_id';
+        RAISE EXCEPTION 'FAIL 12: sword was not equipped in main_hand_item_id';
     END IF;
 END;
 $$;
 
-SELECT 'OK 11: sword equipped in main hand' AS check;
+SELECT 'OK 12: sword equipped in main hand' AS check;
 
 UPDATE game.item_instances item
 SET owner_kind = 'world_object',
@@ -286,7 +380,7 @@ BEGIN
         WHERE item.owner_kind = 'world_object'
           AND item.owner_id = ctx.well_id
     ) THEN
-        RAISE EXCEPTION 'FAIL 12: sword was not moved to the well world_object owner';
+        RAISE EXCEPTION 'FAIL 13: sword was not moved to the well world_object owner';
     END IF;
 
     IF EXISTS (
@@ -295,41 +389,12 @@ BEGIN
         JOIN game.equipped_gear eg ON eg.player_id = ctx.player_id
         WHERE eg.main_hand_item_id = ctx.sword_id
     ) THEN
-        RAISE EXCEPTION 'FAIL 13: main_hand_item_id still references moved sword';
+        RAISE EXCEPTION 'FAIL 14: main_hand_item_id still references moved sword';
     END IF;
 END;
 $$;
 
-SELECT 'OK 12: sword moved to well and main hand cleared' AS check;
-
-DO $$
-DECLARE
-    k_player text := convert_from(decode('d0b8d0b3d180d0bed0ba', 'hex'), 'UTF8');
-    k_world text := convert_from(decode('d0bcd0b8d180', 'hex'), 'UTF8');
-    k_quests text := convert_from(decode('d0bad0b2d0b5d181d182d18b', 'hex'), 'UTF8');
-    k_history text := convert_from(decode('d0b8d181d182d0bed180d0b8d18f', 'hex'), 'UTF8');
-    k_current_location text := convert_from(decode('d182d0b5d0bad183d189d0b0d18fd0bbd0bed0bad0b0d186d0b8d18f4964', 'hex'), 'UTF8');
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM smoke_context ctx
-        JOIN game.game_state_documents doc ON doc.game_state_id = ctx.game_state_id
-        WHERE doc.data ? k_player
-          AND doc.data ? k_world
-          AND doc.data ? k_quests
-          AND doc.data ? k_history
-          AND doc.data->k_world->>k_current_location = ctx.location_id::text
-    ) THEN
-        RAISE EXCEPTION 'FAIL 14: game.game_state_documents did not return expected JSON';
-    END IF;
-END;
-$$;
-
-SELECT
-    'OK 13: game.game_state_documents returns valid top-level JSON' AS check,
-    jsonb_pretty(doc.data) AS document_preview
-FROM smoke_context ctx
-JOIN game.game_state_documents doc ON doc.game_state_id = ctx.game_state_id;
+SELECT 'OK 13: sword moved to well and main hand cleared' AS check;
 
 WITH inserted_campaign AS (
     INSERT INTO game.campaign_templates (
@@ -489,7 +554,7 @@ UPDATE smoke_context
 SET combat_state_id = inserted_combat.id
 FROM inserted_combat;
 
-WITH inserted_participant AS (
+WITH inserted_character_participant AS (
     INSERT INTO game.combat_participants (
         game_state_id,
         combat_state_id,
@@ -516,8 +581,8 @@ WITH inserted_participant AS (
     RETURNING id
 )
 UPDATE smoke_context
-SET combat_participant_id = inserted_participant.id
-FROM inserted_participant;
+SET combat_participant_id = inserted_character_participant.id
+FROM inserted_character_participant;
 
 UPDATE game.combat_states cs
 SET current_turn_participant_id = ctx.combat_participant_id
@@ -542,21 +607,240 @@ BEGIN
           AND cp.hp_current = 12
           AND cp.hp_max = 12
     ) THEN
-        RAISE EXCEPTION 'FAIL 18: combat_state or combat_participant was not created correctly';
+        RAISE EXCEPTION 'FAIL 18: combat_state or character combat_participant was not created correctly';
     END IF;
 END;
 $$;
 
-SELECT 'OK 17: combat_state and combat_participant created' AS check, combat_state_id, combat_participant_id
+SELECT 'OK 17: combat_state and character participant created' AS check, combat_state_id, combat_participant_id
 FROM smoke_context;
 
+WITH inserted_monster AS (
+    INSERT INTO game.monsters (
+        game_state_id,
+        location_id,
+        name,
+        monster_type,
+        description,
+        hp_current,
+        hp_max,
+        armor_class,
+        initiative_bonus,
+        stats,
+        abilities,
+        loot,
+        tags
+    )
+    SELECT game_state_id,
+           location_id,
+           'Smoke Goblin',
+           'goblin',
+           'Temporary monster for smoke test.',
+           7,
+           7,
+           13,
+           2,
+           '{"strength": 8, "dexterity": 14}'::jsonb,
+           '[{"name": "scimitar"}]'::jsonb,
+           '[{"templateId": "coin_copper", "quantity": 3}]'::jsonb,
+           '["smoke","enemy"]'::jsonb
+    FROM smoke_context
+    RETURNING id
+)
+UPDATE smoke_context
+SET monster_id = inserted_monster.id
+FROM inserted_monster;
+
+WITH inserted_monster_participant AS (
+    INSERT INTO game.combat_participants (
+        game_state_id,
+        combat_state_id,
+        actor_type,
+        actor_id,
+        name,
+        initiative,
+        hp_current,
+        hp_max,
+        has_acted,
+        conditions
+    )
+    SELECT game_state_id,
+           combat_state_id,
+           'monster',
+           monster_id,
+           'Smoke Goblin',
+           12,
+           7,
+           7,
+           false,
+           '[]'::jsonb
+    FROM smoke_context
+    RETURNING id
+)
+UPDATE smoke_context
+SET monster_participant_id = inserted_monster_participant.id
+FROM inserted_monster_participant;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM smoke_context ctx
+        JOIN game.monsters m ON m.id = ctx.monster_id
+        JOIN game.combat_participants cp ON cp.id = ctx.monster_participant_id
+        WHERE m.game_state_id = ctx.game_state_id
+          AND m.location_id = ctx.location_id
+          AND cp.game_state_id = ctx.game_state_id
+          AND cp.combat_state_id = ctx.combat_state_id
+          AND cp.actor_type = 'monster'
+          AND cp.actor_id = m.id
+    ) THEN
+        RAISE EXCEPTION 'FAIL 19: monster or monster combat_participant was not created correctly';
+    END IF;
+END;
+$$;
+
+SELECT 'OK 18: monster and monster combat participant created' AS check, monster_id, monster_participant_id
+FROM smoke_context;
+
+WITH inserted_turn AS (
+    INSERT INTO game.game_turns (
+        game_state_id,
+        account_id,
+        turn_number,
+        player_message,
+        status,
+        ai_model
+    )
+    SELECT game_state_id,
+           account_id,
+           1,
+           'Smoke turn message.',
+           'pending',
+           'smoke-model'
+    FROM smoke_context
+    RETURNING id
+)
+UPDATE smoke_context
+SET game_turn_id = inserted_turn.id
+FROM inserted_turn;
+
+UPDATE game.game_turns gt
+SET status = 'completed',
+    master_answer = 'Smoke master answer.',
+    raw_ai_response = '{"answer": "ok"}'::jsonb,
+    completed_at = now()
+FROM smoke_context ctx
+WHERE gt.id = ctx.game_turn_id;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM smoke_context ctx
+        JOIN game.game_turns gt ON gt.id = ctx.game_turn_id
+        WHERE gt.game_state_id = ctx.game_state_id
+          AND gt.account_id = ctx.account_id
+          AND gt.status = 'completed'
+          AND gt.ai_model = 'smoke-model'
+          AND gt.completed_at IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'FAIL 20: game_turn processing fields were not saved correctly';
+    END IF;
+END;
+$$;
+
+SELECT 'OK 19: game_turn AI-loop fields work' AS check, game_turn_id
+FROM smoke_context;
+
+WITH inserted_change AS (
+    INSERT INTO game.game_changes (
+        game_state_id,
+        game_turn_id,
+        operation,
+        payload
+    )
+    SELECT game_state_id,
+           game_turn_id,
+           'smoke_change',
+           '{"value": 1}'::jsonb
+    FROM smoke_context
+    RETURNING id
+)
+UPDATE smoke_context
+SET game_change_id = inserted_change.id
+FROM inserted_change;
+
+UPDATE game.game_changes gc
+SET status = 'rejected',
+    reject_reason = 'Smoke rejection.',
+    processed_at = now(),
+    processed_by_account_id = ctx.account_id,
+    error_message = 'Smoke handled error.',
+    apply_result = '{"checked": true}'::jsonb
+FROM smoke_context ctx
+WHERE gc.id = ctx.game_change_id;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM smoke_context ctx
+        JOIN game.game_changes gc ON gc.id = ctx.game_change_id
+        WHERE gc.game_state_id = ctx.game_state_id
+          AND gc.game_turn_id = ctx.game_turn_id
+          AND gc.status = 'rejected'
+          AND gc.reject_reason = 'Smoke rejection.'
+          AND gc.processed_at IS NOT NULL
+          AND gc.processed_by_account_id = ctx.account_id
+          AND gc.error_message = 'Smoke handled error.'
+          AND gc.apply_result = '{"checked": true}'::jsonb
+    ) THEN
+        RAISE EXCEPTION 'FAIL 21: game_change audit/apply-result fields were not saved correctly';
+    END IF;
+END;
+$$;
+
+SELECT 'OK 20: game_change apply/reject audit fields work' AS check, game_change_id
+FROM smoke_context;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM smoke_context ctx
+        JOIN game.game_state_documents doc ON doc.game_state_id = ctx.game_state_id
+        WHERE doc.data ? 'персонажи'
+          AND doc.data ? 'партия'
+          AND doc.data ? 'мир'
+          AND doc.data ? 'квесты'
+          AND doc.data ? 'история'
+          AND jsonb_typeof(doc.data->'персонажи') = 'array'
+          AND jsonb_array_length(doc.data->'персонажи') >= 1
+          AND doc.data->'мир'->>'текущаялокацияId' = ctx.location_id::text
+          AND (doc.data->'мир'->'монстры') ? ctx.monster_id::text
+    ) THEN
+        RAISE EXCEPTION 'FAIL 22: game.game_state_documents did not return expected GameState JSON with monsters';
+    END IF;
+END;
+$$;
+
 SELECT
-    'OK 18: RPG extension table SELECT checks passed' AS check,
+    'OK 21: game.game_state_documents returns valid GameState JSON with monsters' AS check,
+    jsonb_pretty(doc.data) AS document_preview
+FROM smoke_context ctx
+JOIN game.game_state_documents doc ON doc.game_state_id = ctx.game_state_id;
+
+SELECT
+    'OK 22: table SELECT checks passed' AS check,
     (SELECT count(*) FROM game.campaign_templates ct JOIN smoke_context ctx ON ct.id = ctx.campaign_template_id) AS campaign_templates,
     (SELECT count(*) FROM game.story_states ss JOIN smoke_context ctx ON ss.id = ctx.story_state_id) AS story_states,
     (SELECT count(*) FROM game.parties p JOIN smoke_context ctx ON p.id = ctx.party_id) AS parties,
     (SELECT count(*) FROM game.party_members pm JOIN smoke_context ctx ON pm.id = ctx.party_member_id) AS party_members,
     (SELECT count(*) FROM game.combat_states cs JOIN smoke_context ctx ON cs.id = ctx.combat_state_id) AS combat_states,
-    (SELECT count(*) FROM game.combat_participants cp JOIN smoke_context ctx ON cp.id = ctx.combat_participant_id) AS combat_participants;
+    (SELECT count(*) FROM game.combat_participants cp JOIN smoke_context ctx ON cp.id = ctx.monster_participant_id) AS monster_combat_participants,
+    (SELECT count(*) FROM game.monsters m JOIN smoke_context ctx ON m.id = ctx.monster_id) AS monsters,
+    (SELECT count(*) FROM game.game_turns gt JOIN smoke_context ctx ON gt.id = ctx.game_turn_id) AS game_turns,
+    (SELECT count(*) FROM game.game_changes gc JOIN smoke_context ctx ON gc.id = ctx.game_change_id) AS game_changes;
 
 ROLLBACK;

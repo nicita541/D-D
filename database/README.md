@@ -103,6 +103,7 @@ World:
 - `game.world_containers`
 - `game.npcs`
 - `game.factions`
+- `game.monsters`
 
 Quests and history:
 
@@ -126,6 +127,8 @@ These tables support the newer backend endpoints for campaigns, story state, par
 
 These tables are added by `init/003_add_rpg_story_party_combat.sql`. The script is idempotent and uses the existing `game.set_updated_at()` trigger function.
 
+`init/007_prepare_next_backend_stages.sql` adds the next backend-stage database support: AI turn processing fields, game change audit fields, monster/enemy actors, extra indexes, and monster data in `game.game_state_documents`.
+
 ## Create New Game
 
 Create an account first. In real usage this should come from the backend registration flow, which must provide a real password hash.
@@ -145,11 +148,11 @@ SELECT game.create_new_game('<account-id>', 'Новая игра') AS game_state
 The function creates:
 
 - `game.game_states`
-- starter `game.players`
-- default progression, resources, attributes, wealth, needs, equipment, and combat rows
 - starter location
 - current location link
 - starter `game.game_log_entries` row
+
+It does not create a default character. Character creation and character-domain rows are handled by the backend Character Domain API.
 
 ## GameState JSON View
 
@@ -163,7 +166,7 @@ WHERE game_state_id = '<game-state-id>';
 
 The view returns a JSON document with Russian field names:
 
-- `игрок`
+- `персонажи`
 - `персонаж`
 - `прогресс`
 - `ресурсы`
@@ -179,10 +182,47 @@ The view returns a JSON document with Russian field names:
 - `локации`
 - `нпс`
 - `фракции`
+- `монстры`
 - `квесты`
 - `история`
+- `партия`
 
 `game.player_documents` is no longer created. `game.game_state_documents` is the primary view.
+
+## Next Backend Stages Readiness
+
+The database is prepared for these backend endpoint groups:
+
+- Character Domain API: progression, resources, attributes, wealth, needs, conditions, limited resources, proficiencies, abilities, items, equipment, combat stats, and attacks.
+- Turns + AI loop: `game.game_turns` stores player message, master answer, raw AI response, status, model, error text, and completion timestamp.
+- Apply/Reject changes: `game.game_changes` stores pending/applied/rejected proposals, reject reason, processing audit, error text, and structured apply result.
+- World Domain API: locations, exits, world objects, containers, NPCs, factions, quests, quest steps, and reward items.
+- Monster combat support: `game.monsters` stores monster actors, and `game.combat_participants.actor_type = 'monster'` can point to those rows.
+
+## Backend Validation Rules
+
+Some cross-table rules are intentionally left to backend validation because enforcing them with nullable polymorphic FKs would make item movement and `ON DELETE SET NULL` behavior fragile:
+
+- An item must belong to a character inventory before it can be equipped.
+- `game.attacks.item_id` must belong to the same character/game_state as the attack.
+- `game.abilities.cost_resource_id` must belong to the same character/game_state as the ability.
+- `game.quest_reward_items.item_id` must belong to the same game_state as the quest.
+- `game.combat_participants.actor_type = 'monster'` must use an `actor_id` from `game.monsters`.
+- Apply/reject endpoints must check `game_state` ownership through `game.game_states.account_id`.
+
+## Future Migration Plan
+
+The current project uses dev init scripts under `database/init`. A later production migration structure can be introduced without changing the current Docker flow:
+
+- `database/migrations`
+- `schema_migrations`
+- `001_initial.sql`
+- `002_auth.sql`
+- `003_rpg_core.sql`
+- `004_story_party_combat.sql`
+- `005_character_domain.sql`
+- `006_ai_turns_changes.sql`
+- `007_world_domain.sql`
 
 ## Why Items Use owner_kind/owner_id
 
@@ -240,7 +280,7 @@ It verifies:
 - refresh token revocation metadata
 - `game.create_new_game`
 - `game.game_states.account_id`
-- default rows
+- explicit test character domain rows
 - sword item creation
 - world object well creation
 - equip sword in `main_hand_item_id`
@@ -253,3 +293,6 @@ It verifies:
 - `game.party_members`
 - `game.combat_states`
 - `game.combat_participants`
+- `game.monsters`
+- `game.game_turns` AI-loop fields
+- `game.game_changes` apply/reject audit fields
