@@ -642,207 +642,223 @@ SELECT
         'версиясхемы', gs.schema_version,
         'номерхода', gs.turn_number,
         'режим', gs.mode,
-        'игрок', jsonb_build_object(
-            'id', p.id,
-            'персонаж', jsonb_build_object(
-                'имя', p.name,
-                'предыстория', p.background,
-                'вид', p.species,
-                'класс', p.class_name,
-                'подкласс', p.subclass,
-                'описание', p.description,
-                'мировоззрение', p.alignment
-            ),
-            'прогресс', jsonb_build_object(
-                'уровень', pp.level,
-                'опыт', pp.experience,
-                'опытдоследующегоуровня', pp.experience_to_next_level
-            ),
-            'ресурсы', jsonb_build_object(
-                'хп', jsonb_build_object('максимум', pr.hp_max, 'текущее', pr.hp_current),
-                'мана', jsonb_build_object('максимум', pr.mana_max, 'текущее', pr.mana_current),
-                'очкидействий', jsonb_build_object('максимум', pr.action_points_max, 'текущее', pr.action_points_current),
-                'состояния', COALESCE((
-                    SELECT jsonb_agg(jsonb_build_object(
-                        'id', c.id,
-                        'название', c.name,
-                        'тип', c.type,
-                        'описание', c.description,
-                        'источник', c.source,
-                        'осталосьходов', c.remaining_turns,
-                        'постоянное', c.is_permanent,
-                        'стаки', c.stacks,
-                        'максимумстаков', c.max_stacks,
-                        'эффекты', c.effects,
-                        'теги', c.tags
-                    ) ORDER BY c.created_at, c.id)
-                    FROM game.conditions c
-                    WHERE c.player_id = p.id
-                ), '[]'::jsonb),
-                'ресурсыспособностей', COALESCE((
-                    SELECT jsonb_agg(jsonb_build_object(
-                        'id', lr.id,
-                        'название', lr.name,
-                        'максимум', lr.max_value,
-                        'текущее', lr.current_value,
-                        'восстановление', lr.recovery
-                    ) ORDER BY lr.name, lr.id)
-                    FROM game.limited_resources lr
-                    WHERE lr.player_id = p.id
-                ), '[]'::jsonb),
-                'спасброскисмерти', jsonb_build_object(
-                    'активны', pr.death_saves_active,
-                    'успехи', pr.death_saves_successes,
-                    'провалы', pr.death_saves_failures
-                )
-            ),
-            'характеристики', jsonb_build_object(
-                'сила', pa.strength,
-                'ловкость', pa.dexterity,
-                'телосложение', pa.constitution,
-                'интеллект', pa.intelligence,
-                'мудрость', pa.wisdom,
-                'харизма', pa.charisma,
-                'инициатива', pa.initiative,
-                'скорость', pa.speed,
-                'восприятие', pa.perception
-            ),
-            'владения', COALESCE((
-                SELECT jsonb_object_agg(grouped.type, grouped.values)
-                FROM (
-                    SELECT prof.type, jsonb_agg(prof.value ORDER BY prof.value) AS values
-                    FROM game.player_proficiencies prof
-                    WHERE prof.player_id = p.id
-                    GROUP BY prof.type
-                ) grouped
-            ), '{}'::jsonb),
-            'способности', COALESCE((
-                SELECT jsonb_object_agg(grouped.category, grouped.abilities)
-                FROM (
-                    SELECT ab.category, jsonb_agg(jsonb_build_object(
-                        'id', ab.id,
-                        'название', ab.name,
-                        'описание', ab.description,
-                        'тип', ab.ability_type,
-                        'ресурсId', ab.cost_resource_id,
-                        'стоимость', ab.cost_amount,
-                        'эффекты', ab.effects
-                    ) ORDER BY ab.name, ab.id) AS abilities
-                    FROM game.abilities ab
-                    WHERE ab.player_id = p.id
-                    GROUP BY ab.category
-                ) grouped
-            ), '{}'::jsonb),
-            'потребности', jsonb_build_object(
-                'еда', jsonb_build_object('размер', pn.food_size, 'вдень', pn.food_per_day, 'остаток', pn.food_remaining),
-                'вода', jsonb_build_object('размер', pn.water_size, 'вдень', pn.water_per_day, 'остаток', pn.water_remaining),
-                'грузоподъемность', jsonb_build_object(
-                    'максимум', pn.carry_capacity_max,
-                    'текущийвес', pn.carry_current_weight,
-                    'единица', pn.carry_unit
-                ),
-                'передвижение', jsonb_build_object(
-                    'метровзаход', pn.movement_meters_per_turn,
-                    'кмвдень', pn.movement_km_per_day
-                )
-            ),
-            'богатство', jsonb_build_object(
-                'монеты', jsonb_build_object(
-                    'медные', w.copper,
-                    'серебряные', w.silver,
-                    'золотые', w.gold,
-                    'платиновые', w.platinum
-                )
-            ),
-            'инвентарь', COALESCE((
-                SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
-                    'id', item.id,
-                    'templateId', item.template_id,
-                    'название', item.name,
-                    'тип', item.item_type,
-                    'подтип', item.subtype,
-                    'описание', item.description,
-                    'количество', item.quantity,
-                    'стакуемый', item.stackable,
-                    'вес', item.weight_each,
-                    'состояние', item.condition,
-                    'редкость', item.rarity,
-                    'магический', item.is_magical,
-                    'цена', jsonb_build_object(
-                        'медные', item.price_copper,
-                        'серебряные', item.price_silver,
-                        'золотые', item.price_gold,
-                        'платиновые', item.price_platinum
+
+        'персонажи', COALESCE((
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'id', p.id,
+                    'персонаж', jsonb_build_object(
+                        'имя', p.name,
+                        'предыстория', p.background,
+                        'вид', p.species,
+                        'класс', p.class_name,
+                        'подкласс', p.subclass,
+                        'описание', p.description,
+                        'мировоззрение', p.alignment
                     ),
-                    'теги', item.tags,
-                    'оружие', (
-                        SELECT jsonb_build_object(
-                            'уронКости', iws.damage_dice,
-                            'типУрона', iws.damage_type,
-                            'бонусАтаки', iws.attack_bonus,
-                            'бонусУрона', iws.damage_bonus,
-                            'дистанция', iws.range,
-                            'свойства', iws.properties
-                        )
-                        FROM game.item_weapon_stats iws
-                        WHERE iws.item_id = item.id
+                    'прогресс', jsonb_build_object(
+                        'уровень', pp.level,
+                        'опыт', pp.experience,
+                        'опытдоследующегоуровня', pp.experience_to_next_level
                     ),
-                    'броня', (
-                        SELECT jsonb_build_object(
-                            'классдоспеха', ias.armor_class,
-                            'бонусКД', ias.armor_class_bonus,
-                            'типБрони', ias.armor_type,
-                            'помехаСкрытности', ias.stealth_disadvantage,
-                            'требованиеСилы', ias.strength_requirement
+                    'ресурсы', jsonb_build_object(
+                        'хп', jsonb_build_object('максимум', pr.hp_max, 'текущее', pr.hp_current),
+                        'мана', jsonb_build_object('максимум', pr.mana_max, 'текущее', pr.mana_current),
+                        'очкидействий', jsonb_build_object('максимум', pr.action_points_max, 'текущее', pr.action_points_current),
+                        'состояния', COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'id', c.id,
+                                'название', c.name,
+                                'тип', c.type,
+                                'описание', c.description,
+                                'источник', c.source,
+                                'осталосьходов', c.remaining_turns,
+                                'постоянное', c.is_permanent,
+                                'стаки', c.stacks,
+                                'максимумстаков', c.max_stacks,
+                                'эффекты', c.effects,
+                                'теги', c.tags
+                            ) ORDER BY c.created_at, c.id)
+                            FROM game.conditions c
+                            WHERE c.player_id = p.id
+                        ), '[]'::jsonb),
+                        'ресурсыспособностей', COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'id', lr.id,
+                                'название', lr.name,
+                                'максимум', lr.max_value,
+                                'текущее', lr.current_value,
+                                'восстановление', lr.recovery
+                            ) ORDER BY lr.name, lr.id)
+                            FROM game.limited_resources lr
+                            WHERE lr.player_id = p.id
+                        ), '[]'::jsonb),
+                        'спасброскисмерти', jsonb_build_object(
+                            'активны', pr.death_saves_active,
+                            'успехи', pr.death_saves_successes,
+                            'провалы', pr.death_saves_failures
                         )
-                        FROM game.item_armor_stats ias
-                        WHERE ias.item_id = item.id
                     ),
-                    'расходник', (
-                        SELECT jsonb_build_object(
-                            'использований', ics.uses,
-                            'эффекты', ics.effects
+                    'характеристики', jsonb_build_object(
+                        'сила', pa.strength,
+                        'ловкость', pa.dexterity,
+                        'телосложение', pa.constitution,
+                        'интеллект', pa.intelligence,
+                        'мудрость', pa.wisdom,
+                        'харизма', pa.charisma,
+                        'инициатива', pa.initiative,
+                        'скорость', pa.speed,
+                        'восприятие', pa.perception
+                    ),
+                    'владения', COALESCE((
+                        SELECT jsonb_object_agg(grouped.type, grouped.values)
+                        FROM (
+                            SELECT prof.type, jsonb_agg(prof.value ORDER BY prof.value) AS values
+                            FROM game.player_proficiencies prof
+                            WHERE prof.player_id = p.id
+                            GROUP BY prof.type
+                        ) grouped
+                    ), '{}'::jsonb),
+                    'способности', COALESCE((
+                        SELECT jsonb_object_agg(grouped.category, grouped.abilities)
+                        FROM (
+                            SELECT ab.category, jsonb_agg(jsonb_build_object(
+                                'id', ab.id,
+                                'название', ab.name,
+                                'описание', ab.description,
+                                'тип', ab.ability_type,
+                                'ресурсId', ab.cost_resource_id,
+                                'стоимость', ab.cost_amount,
+                                'эффекты', ab.effects
+                            ) ORDER BY ab.name, ab.id) AS abilities
+                            FROM game.abilities ab
+                            WHERE ab.player_id = p.id
+                            GROUP BY ab.category
+                        ) grouped
+                    ), '{}'::jsonb),
+                    'потребности', jsonb_build_object(
+                        'еда', jsonb_build_object('размер', pn.food_size, 'вдень', pn.food_per_day, 'остаток', pn.food_remaining),
+                        'вода', jsonb_build_object('размер', pn.water_size, 'вдень', pn.water_per_day, 'остаток', pn.water_remaining),
+                        'грузоподъемность', jsonb_build_object(
+                            'максимум', pn.carry_capacity_max,
+                            'текущийвес', pn.carry_current_weight,
+                            'единица', pn.carry_unit
+                        ),
+                        'передвижение', jsonb_build_object(
+                            'метровзаход', pn.movement_meters_per_turn,
+                            'кмвдень', pn.movement_km_per_day
                         )
-                        FROM game.item_consumable_stats ics
-                        WHERE ics.item_id = item.id
+                    ),
+                    'богатство', jsonb_build_object(
+                        'монеты', jsonb_build_object(
+                            'медные', w.copper,
+                            'серебряные', w.silver,
+                            'золотые', w.gold,
+                            'платиновые', w.platinum
+                        )
+                    ),
+                    'инвентарь', COALESCE((
+                        SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                            'id', item.id,
+                            'templateId', item.template_id,
+                            'название', item.name,
+                            'тип', item.item_type,
+                            'подтип', item.subtype,
+                            'описание', item.description,
+                            'количество', item.quantity,
+                            'стакуемый', item.stackable,
+                            'вес', item.weight_each,
+                            'состояние', item.condition,
+                            'редкость', item.rarity,
+                            'магический', item.is_magical,
+                            'цена', jsonb_build_object(
+                                'медные', item.price_copper,
+                                'серебряные', item.price_silver,
+                                'золотые', item.price_gold,
+                                'платиновые', item.price_platinum
+                            ),
+                            'теги', item.tags,
+                            'оружие', (
+                                SELECT jsonb_build_object(
+                                    'уронКости', iws.damage_dice,
+                                    'типУрона', iws.damage_type,
+                                    'бонусАтаки', iws.attack_bonus,
+                                    'бонусУрона', iws.damage_bonus,
+                                    'дистанция', iws.range,
+                                    'свойства', iws.properties
+                                )
+                                FROM game.item_weapon_stats iws
+                                WHERE iws.item_id = item.id
+                            ),
+                            'броня', (
+                                SELECT jsonb_build_object(
+                                    'классдоспеха', ias.armor_class,
+                                    'бонусКД', ias.armor_class_bonus,
+                                    'типБрони', ias.armor_type,
+                                    'помехаСкрытности', ias.stealth_disadvantage,
+                                    'требованиеСилы', ias.strength_requirement
+                                )
+                                FROM game.item_armor_stats ias
+                                WHERE ias.item_id = item.id
+                            ),
+                            'расходник', (
+                                SELECT jsonb_build_object(
+                                    'использований', ics.uses,
+                                    'эффекты', ics.effects
+                                )
+                                FROM game.item_consumable_stats ics
+                                WHERE ics.item_id = item.id
+                            )
+                        )) ORDER BY item.name, item.id)
+                        FROM game.item_instances item
+                        WHERE item.game_state_id = gs.id
+                          AND item.owner_kind = 'player_inventory'
+                          AND item.owner_id = p.id
+                    ), '[]'::jsonb),
+                    'экипировка', jsonb_build_object(
+                        'голова', eg.head_item_id,
+                        'тело', eg.body_item_id,
+                        'руки', eg.hands_item_id,
+                        'ноги', eg.legs_item_id,
+                        'обувь', eg.feet_item_id,
+                        'основнаярука', eg.main_hand_item_id,
+                        'втораярука', eg.off_hand_item_id,
+                        'амулет', eg.amulet_item_id,
+                        'кольцо1', eg.ring1_item_id,
+                        'кольцо2', eg.ring2_item_id
+                    ),
+                    'бой', jsonb_build_object(
+                        'классдоспеха', cs.armor_class,
+                        'бонусмастерства', cs.proficiency_bonus,
+                        'вбою', cs.in_combat,
+                        'бросокинициативы', cs.initiative_roll,
+                        'атаки', COALESCE((
+                            SELECT jsonb_agg(jsonb_build_object(
+                                'id', atk.id,
+                                'предметId', atk.item_id,
+                                'название', atk.name,
+                                'бросок', atk.roll,
+                                'урон', atk.damage,
+                                'типУрона', atk.damage_type
+                            ) ORDER BY atk.name, atk.id)
+                            FROM game.attacks atk
+                            WHERE atk.player_id = p.id
+                        ), '[]'::jsonb)
                     )
-                )) ORDER BY item.name, item.id)
-                FROM game.item_instances item
-                WHERE item.game_state_id = gs.id
-                  AND item.owner_kind = 'player_inventory'
-                  AND item.owner_id = p.id
-            ), '[]'::jsonb),
-            'экипировка', jsonb_build_object(
-                'голова', eg.head_item_id,
-                'тело', eg.body_item_id,
-                'руки', eg.hands_item_id,
-                'ноги', eg.legs_item_id,
-                'обувь', eg.feet_item_id,
-                'основнаярука', eg.main_hand_item_id,
-                'втораярука', eg.off_hand_item_id,
-                'амулет', eg.amulet_item_id,
-                'кольцо1', eg.ring1_item_id,
-                'кольцо2', eg.ring2_item_id
-            ),
-            'бой', jsonb_build_object(
-                'классдоспеха', cs.armor_class,
-                'бонусмастерства', cs.proficiency_bonus,
-                'вбою', cs.in_combat,
-                'бросокинициативы', cs.initiative_roll,
-                'атаки', COALESCE((
-                    SELECT jsonb_agg(jsonb_build_object(
-                        'id', atk.id,
-                        'предметId', atk.item_id,
-                        'название', atk.name,
-                        'бросок', atk.roll,
-                        'урон', atk.damage,
-                        'типУрона', atk.damage_type
-                    ) ORDER BY atk.name, atk.id)
-                    FROM game.attacks atk
-                    WHERE atk.player_id = p.id
-                ), '[]'::jsonb)
+                )
+                ORDER BY p.created_at, p.id
             )
-        ),
+            FROM game.players p
+            LEFT JOIN game.player_progression pp ON pp.player_id = p.id
+            LEFT JOIN game.player_resources pr ON pr.player_id = p.id
+            LEFT JOIN game.player_attributes pa ON pa.player_id = p.id
+            LEFT JOIN game.wealth w ON w.player_id = p.id
+            LEFT JOIN game.player_needs pn ON pn.player_id = p.id
+            LEFT JOIN game.equipped_gear eg ON eg.player_id = p.id
+            LEFT JOIN game.combat_stats cs ON cs.player_id = p.id
+            WHERE p.game_state_id = gs.id
+        ), '[]'::jsonb),
+
         'мир', jsonb_build_object(
             'текущаялокацияId', gs.current_location_id,
             'локации', COALESCE((
@@ -957,18 +973,4 @@ SELECT
             WHERE gle.game_state_id = gs.id
         ), '[]'::jsonb)
     ) AS data
-FROM game.game_states gs
-LEFT JOIN LATERAL (
-    SELECT p_inner.*
-    FROM game.players p_inner
-    WHERE p_inner.game_state_id = gs.id
-    ORDER BY p_inner.created_at, p_inner.id
-    LIMIT 1
-) p ON true
-LEFT JOIN game.player_progression pp ON pp.player_id = p.id
-LEFT JOIN game.player_resources pr ON pr.player_id = p.id
-LEFT JOIN game.player_attributes pa ON pa.player_id = p.id
-LEFT JOIN game.wealth w ON w.player_id = p.id
-LEFT JOIN game.player_needs pn ON pn.player_id = p.id
-LEFT JOIN game.equipped_gear eg ON eg.player_id = p.id
-LEFT JOIN game.combat_stats cs ON cs.player_id = p.id;
+FROM game.game_states gs;

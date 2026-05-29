@@ -1,6 +1,7 @@
 using System.Text.Json;
 using backend.Infrastructure.Database;
 using Npgsql;
+
 namespace backend.Repositories.Rpg;
 
 public sealed class AiMasterContextRepository : IAiMasterContextRepository
@@ -12,7 +13,11 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<JsonElement?> GetContextAsync(Guid accountId, Guid gameStateId, int recentEventsLimit, CancellationToken cancellationToken)
+    public async Task<JsonElement?> GetContextAsync(
+        Guid accountId,
+        Guid gameStateId,
+        int recentEventsLimit,
+        CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
@@ -112,6 +117,84 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                     LIMIT @recentEventsLimit
                 ) x
             ),
+            recent_rolls AS (
+                SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at, x.id), '[]'::jsonb) AS data
+                FROM (
+                    SELECT id,
+                           created_at,
+                           jsonb_build_object(
+                               'id', id,
+                               'characterId', character_id,
+                               'formula', formula,
+                               'reason', reason,
+                               'rolls', rolls,
+                               'modifier', modifier,
+                               'total', total,
+                               'createdAt', created_at
+                           ) AS item
+                    FROM game.dice_rolls
+                    WHERE game_state_id = @gameStateId
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 10
+                ) x
+            ),
+            recent_checks AS (
+                SELECT COALESCE(jsonb_agg(x.item ORDER BY x.created_at, x.id), '[]'::jsonb) AS data
+                FROM (
+                    SELECT sc.id,
+                           sc.created_at,
+                           jsonb_build_object(
+                               'id', sc.id,
+                               'characterId', sc.character_id,
+                               'ability', sc.ability,
+                               'difficultyClass', sc.difficulty_class,
+                               'total', sc.total,
+                               'success', sc.success,
+                               'reason', sc.reason,
+                               'createdAt', sc.created_at
+                           ) AS item
+                    FROM game.skill_checks sc
+                    WHERE sc.game_state_id = @gameStateId
+                    ORDER BY sc.created_at DESC, sc.id DESC
+                    LIMIT 10
+                ) x
+            ),
+            mechanic_requests_doc AS (
+                SELECT jsonb_build_object(
+                    'pending', COALESCE((
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'id', mr.id,
+                            'requestType', mr.request_type,
+                            'payload', mr.payload,
+                            'status', mr.status,
+                            'createdAt', mr.created_at
+                        ) ORDER BY mr.created_at DESC, mr.id DESC)
+                        FROM game.mechanic_requests mr
+                        WHERE mr.game_state_id = @gameStateId
+                          AND mr.status = 'pending'
+                    ), '[]'::jsonb),
+                    'resolved', COALESCE((
+                        SELECT jsonb_agg(x.item ORDER BY x.resolved_at DESC NULLS LAST, x.id DESC)
+                        FROM (
+                            SELECT mr.id,
+                                   mr.resolved_at,
+                                   jsonb_build_object(
+                                       'id', mr.id,
+                                       'requestType', mr.request_type,
+                                       'payload', mr.payload,
+                                       'result', mr.result,
+                                       'status', mr.status,
+                                       'resolvedAt', mr.resolved_at
+                                   ) AS item
+                            FROM game.mechanic_requests mr
+                            WHERE mr.game_state_id = @gameStateId
+                              AND mr.status = 'resolved'
+                            ORDER BY mr.resolved_at DESC NULLS LAST, mr.id DESC
+                            LIMIT 10
+                        ) x
+                    ), '[]'::jsonb)
+                ) AS data
+            ),
             memory_doc AS (
                 SELECT jsonb_build_object(
                     'резюме', cm.summary,
@@ -138,6 +221,12 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 'мир', sd.data->'мир',
                 'квесты', sd.data->'квесты',
                 'последниеСобытия', COALESCE((SELECT data FROM recent_history), '[]'::jsonb),
+                'последниеБроски', COALESCE((SELECT data FROM recent_rolls), '[]'::jsonb),
+                'последниеПроверки', COALESCE((SELECT data FROM recent_checks), '[]'::jsonb),
+                'запросыМеханик', COALESCE(
+                    (SELECT data FROM mechanic_requests_doc),
+                    jsonb_build_object('pending', '[]'::jsonb, 'resolved', '[]'::jsonb)
+                ),
                 'памятьКампании', COALESCE(
                     (SELECT data FROM memory_doc),
                     jsonb_build_object(
