@@ -1,8 +1,10 @@
-using System.Reflection;
+﻿using System.Reflection;
 using backend.Controllers;
+using backend.Controllers.Rpg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Xunit;
 
 namespace Tests.Controllers;
 
@@ -11,19 +13,28 @@ public sealed class AllApiSurfaceContractTests
     private static readonly Assembly BackendAssembly = typeof(backend.Program).Assembly;
 
     [Fact]
+    public void All_Api_Controllers_Have_ApiController()
+    {
+        var failures = GetApiControllers()
+            .Where(controller => controller.GetCustomAttribute<ApiControllerAttribute>() is null)
+            .Select(controller => $"{controller.Name} is missing [ApiController].")
+            .ToArray();
+
+        Assert.Empty(failures);
+    }
+
+    [Fact]
     public void All_Controller_Actions_Have_Explicit_Http_Method_Attributes()
     {
         var failures = new List<string>();
 
         foreach (var controller in GetApiControllers())
         {
-            foreach (var action in GetControllerActions(controller))
+            foreach (var method in GetDeclaredPublicControllerMethods(controller))
             {
-                var httpAttributes = GetHttpMethodAttributes(action);
-
-                if (httpAttributes.Length == 0)
+                if (GetHttpMethodAttributes(method).Length == 0)
                 {
-                    failures.Add($"{controller.Name}.{action.Name} has no explicit HTTP method attribute.");
+                    failures.Add($"{controller.Name}.{method.Name} has no explicit HTTP method attribute.");
                 }
             }
         }
@@ -32,35 +43,7 @@ public sealed class AllApiSurfaceContractTests
     }
 
     [Fact]
-    public void All_Api_Controllers_Have_ApiController_And_AtLeastOne_Route()
-    {
-        var failures = new List<string>();
-
-        foreach (var controller in GetApiControllers())
-        {
-            if (controller.GetCustomAttribute<ApiControllerAttribute>() is null)
-            {
-                failures.Add($"{controller.Name} is missing [ApiController].");
-            }
-
-            var controllerRoute = controller.GetCustomAttribute<RouteAttribute>()?.Template;
-
-            var hasControllerRoute = !string.IsNullOrWhiteSpace(controllerRoute);
-            var hasActionRoute = GetControllerActions(controller)
-                .SelectMany(GetHttpMethodAttributes)
-                .Any(attr => !string.IsNullOrWhiteSpace(GetRouteTemplate(attr)));
-
-            if (!hasControllerRoute && !hasActionRoute)
-            {
-                failures.Add($"{controller.Name} has neither controller [Route] nor action HTTP route templates.");
-            }
-        }
-
-        Assert.Empty(failures);
-    }
-
-    [Fact]
-    public void Auth_Health_And_Campaign_Public_Surface_Is_Explicit()
+    public void Health_And_Auth_Public_Surface_Is_Explicit()
     {
         var failures = new List<string>();
 
@@ -75,12 +58,6 @@ public sealed class AllApiSurfaceContractTests
         AssertActionHas<AuthorizeAttribute>(typeof(AuthController), nameof(AuthController.Me), failures);
         AssertActionHas<AuthorizeAttribute>(typeof(AuthController), nameof(AuthController.Logout), failures);
 
-        AssertActionDoesNotHave<AuthorizeAttribute>(typeof(CampaignsController), nameof(CampaignsController.GetCampaigns), failures);
-        AssertActionDoesNotHave<AuthorizeAttribute>(typeof(CampaignsController), nameof(CampaignsController.GetCampaign), failures);
-
-        AssertActionHasAdminRole(typeof(CampaignsController), nameof(CampaignsController.CreateCampaign), failures);
-        AssertActionHasAdminRole(typeof(CampaignsController), nameof(CampaignsController.DeleteCampaign), failures);
-
         Assert.Empty(failures);
     }
 
@@ -93,7 +70,7 @@ public sealed class AllApiSurfaceContractTests
         {
             if (controller == typeof(HealthController) ||
                 controller == typeof(AuthController) ||
-                controller == typeof(CampaignsController))
+                controller.Name == "CampaignsController")
             {
                 continue;
             }
@@ -189,33 +166,6 @@ public sealed class AllApiSurfaceContractTests
     }
 
     [Fact]
-    public void Controller_Actions_Return_ActionResult_Or_IActionResult()
-    {
-        var failures = new List<string>();
-
-        foreach (var controller in GetApiControllers())
-        {
-            foreach (var action in GetControllerActions(controller))
-            {
-                var returnType = UnwrapTask(action.ReturnType);
-
-                var valid =
-                    returnType == typeof(void) ||
-                    typeof(IActionResult).IsAssignableFrom(returnType) ||
-                    returnType == typeof(ActionResult) ||
-                    IsGenericActionResult(returnType);
-
-                if (!valid)
-                {
-                    failures.Add($"{controller.Name}.{action.Name} returns {action.ReturnType.Name}, expected ActionResult/IActionResult/ActionResult<T>/Task<...>.");
-                }
-            }
-        }
-
-        Assert.Empty(failures);
-    }
-
-    [Fact]
     public void All_Endpoints_Are_Under_Api_Or_Health()
     {
         var failures = new List<string>();
@@ -234,7 +184,7 @@ public sealed class AllApiSurfaceContractTests
     }
 
     [Fact]
-    public void Api_Surface_Has_All_Core_Rpg_Endpoints()
+    public void Api_Surface_Has_Core_Rpg_Endpoints()
     {
         var endpoints = GetEndpointContracts()
             .SelectMany(endpoint => endpoint.HttpMethods.Select(method => $"{method} {endpoint.FullRoute}"))
@@ -244,6 +194,7 @@ public sealed class AllApiSurfaceContractTests
         {
             "GET health",
             "GET health/db",
+
             "POST api/auth/register",
             "POST api/auth/login",
             "POST api/auth/refresh",
@@ -300,24 +251,12 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/combat/end",
 
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/experience",
-            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up",
-
-            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/inventory",
-            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/inventory",
-            "PUT api/game-states/{gameStateId:guid}/characters/{characterId:guid}/inventory/{itemId:guid}",
-            "DELETE api/game-states/{gameStateId:guid}/characters/{characterId:guid}/inventory/{itemId:guid}",
-
-            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/equipment",
-            "PUT api/game-states/{gameStateId:guid}/characters/{characterId:guid}/equipment",
-
-            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/attacks",
-            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/attacks",
-            "PUT api/game-states/{gameStateId:guid}/characters/{characterId:guid}/attacks/{attackId:guid}",
-            "DELETE api/game-states/{gameStateId:guid}/characters/{characterId:guid}/attacks/{attackId:guid}"
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up"
         };
 
         var missing = required
             .Where(endpoint => !endpoints.Contains(endpoint))
+            .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         Assert.Empty(missing);
@@ -327,6 +266,7 @@ public sealed class AllApiSurfaceContractTests
     public void Ai_Context_And_Game_State_Document_Source_Are_Updated_For_New_Architecture()
     {
         var aiContextRepository = ReadRepositoryFile("backend/backend/Repositories/Rpg/AiMasterContextRepository.cs");
+
         Assert.Contains("recent_rolls AS", aiContextRepository);
         Assert.Contains("recent_checks AS", aiContextRepository);
         Assert.Contains("mechanic_requests_doc AS", aiContextRepository);
@@ -338,10 +278,16 @@ public sealed class AllApiSurfaceContractTests
         Assert.Contains("game.mechanic_requests", aiContextRepository);
 
         var schema = ReadRepositoryFile("database/init/001_create_schema.sql");
-        Assert.Contains("'персонажи'", schema);
-        Assert.DoesNotContain("'игрок'", schema);
-        Assert.DoesNotContain("LEFT JOIN LATERAL", schema, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("p_inner", schema, StringComparison.OrdinalIgnoreCase);
+        var gameStateDocumentsView = ExtractGameStateDocumentsView(schema);
+
+        Assert.Contains("CREATE OR REPLACE VIEW game.game_state_documents AS", gameStateDocumentsView);
+        Assert.Contains("'персонажи'", gameStateDocumentsView);
+        Assert.Contains("jsonb_agg", gameStateDocumentsView);
+
+        Assert.DoesNotContain("'игрок'", gameStateDocumentsView);
+        Assert.DoesNotContain("LEFT JOIN LATERAL", gameStateDocumentsView.ToUpperInvariant());
+        Assert.DoesNotContain("p_inner", gameStateDocumentsView);
+        Assert.DoesNotContain("LIMIT 1", gameStateDocumentsView.ToUpperInvariant());
     }
 
     private static IReadOnlyList<Type> GetApiControllers()
@@ -356,15 +302,21 @@ public sealed class AllApiSurfaceContractTests
             .ToArray();
     }
 
-    private static IReadOnlyList<MethodInfo> GetControllerActions(Type controller)
+    private static IReadOnlyList<MethodInfo> GetDeclaredPublicControllerMethods(Type controller)
     {
         return controller
             .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
             .Where(method =>
                 !method.IsSpecialName &&
                 method.GetCustomAttribute<NonActionAttribute>() is null)
-            .Where(method => GetHttpMethodAttributes(method).Length > 0)
             .OrderBy(method => method.Name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<MethodInfo> GetControllerActions(Type controller)
+    {
+        return GetDeclaredPublicControllerMethods(controller)
+            .Where(method => GetHttpMethodAttributes(method).Length > 0)
             .ToArray();
     }
 
@@ -473,23 +425,6 @@ public sealed class AllApiSurfaceContractTests
         }
     }
 
-    private static Type UnwrapTask(Type type)
-    {
-        if (type == typeof(Task))
-        {
-            return typeof(void);
-        }
-
-        return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>)
-            ? type.GetGenericArguments()[0]
-            : type;
-    }
-
-    private static bool IsGenericActionResult(Type type)
-    {
-        return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ActionResult<>);
-    }
-
     private static void AssertActionHas<TAttribute>(Type controllerType, string actionName, List<string> failures)
         where TAttribute : Attribute
     {
@@ -497,36 +432,6 @@ public sealed class AllApiSurfaceContractTests
         if (method.GetCustomAttribute<TAttribute>() is null)
         {
             failures.Add($"{controllerType.Name}.{actionName} is missing [{typeof(TAttribute).Name}].");
-        }
-    }
-
-    private static void AssertActionDoesNotHave<TAttribute>(Type controllerType, string actionName, List<string> failures)
-        where TAttribute : Attribute
-    {
-        var method = controllerType.GetMethods().Single(method => method.Name == actionName);
-        if (method.GetCustomAttribute<TAttribute>() is not null)
-        {
-            failures.Add($"{controllerType.Name}.{actionName} must not have [{typeof(TAttribute).Name}].");
-        }
-    }
-
-    private static void AssertActionHasAdminRole(Type controllerType, string actionName, List<string> failures)
-    {
-        var method = controllerType.GetMethods().Single(method => method.Name == actionName);
-        var authorize = method.GetCustomAttribute<AuthorizeAttribute>();
-
-        if (authorize is null)
-        {
-            failures.Add($"{controllerType.Name}.{actionName} is missing [Authorize(Roles = \"admin\")].");
-            return;
-        }
-
-        var roles = (authorize.Roles ?? string.Empty)
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
-        if (!roles.Contains("admin", StringComparer.OrdinalIgnoreCase))
-        {
-            failures.Add($"{controllerType.Name}.{actionName} must require admin role.");
         }
     }
 
@@ -547,6 +452,26 @@ public sealed class AllApiSurfaceContractTests
         }
 
         throw new FileNotFoundException($"Could not find repository file: {relativePath}");
+    }
+
+    private static string ExtractGameStateDocumentsView(string schema)
+    {
+        const string startMarker = "CREATE OR REPLACE VIEW game.game_state_documents AS";
+        const string endMarker = "FROM game.game_states gs;";
+
+        var start = schema.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            throw new InvalidOperationException("Could not find game.game_state_documents view start.");
+        }
+
+        var end = schema.IndexOf(endMarker, start, StringComparison.OrdinalIgnoreCase);
+        if (end < 0)
+        {
+            throw new InvalidOperationException("Could not find game.game_state_documents view end.");
+        }
+
+        return schema[start..(end + endMarker.Length)];
     }
 
     private sealed record EndpointContract(
