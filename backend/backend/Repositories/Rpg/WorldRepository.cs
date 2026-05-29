@@ -368,8 +368,8 @@ public sealed class WorldRepository : IWorldRepository
     {
         var locationId = kind switch
         {
-            WorldEntityKind.LocationExit => GetOptionalGuid(payload, "targetLocationId", "target_location_id"),
-            WorldEntityKind.WorldObject or WorldEntityKind.Container or WorldEntityKind.Npc or WorldEntityKind.Monster => GetOptionalGuid(payload, "locationId", "location_id"),
+            WorldEntityKind.LocationExit => GetOptionalGuid(payload, "targetLocationId", "target_location_id", "целеваяЛокацияId"),
+            WorldEntityKind.WorldObject or WorldEntityKind.Container or WorldEntityKind.Npc or WorldEntityKind.Monster => GetOptionalGuid(payload, "locationId", "location_id", "локацияId"),
             _ => null
         };
 
@@ -383,7 +383,7 @@ public sealed class WorldRepository : IWorldRepository
             throw new RpgValidationException("Referenced location does not belong to this GameState.");
         }
 
-        var keyItemId = kind == WorldEntityKind.Container ? GetOptionalGuid(payload, "keyItemId", "key_item_id") : null;
+        var keyItemId = kind == WorldEntityKind.Container ? GetOptionalGuid(payload, "keyItemId", "key_item_id", "ключПредметId") : null;
         if (keyItemId.HasValue && !await ExistsAsync(connection, "game.item_instances", gameStateId, keyItemId.Value, cancellationToken))
         {
             throw new RpgValidationException("Referenced key item does not belong to this GameState.");
@@ -411,37 +411,37 @@ public sealed class WorldRepository : IWorldRepository
         command.Parameters.AddWithValue("parentId", parentId.HasValue ? parentId.Value : DBNull.Value);
         command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "название")));
         command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        AddNullableGuid(command, "locationId", GetOptionalGuid(payload, "locationId", "location_id"));
+        AddNullableGuid(command, "locationId", GetOptionalGuid(payload, "locationId", "location_id", "локацияId"));
         AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText());
     }
 
     private static void AddKindParameters(NpgsqlCommand command, WorldEntityKind kind, JsonElement payload)
     {
         command.Parameters.AddWithValue("direction", DbString(GetOptionalString(payload, "direction", "направление")));
-        AddNullableGuid(command, "targetLocationId", GetOptionalGuid(payload, "targetLocationId", "target_location_id"));
-        command.Parameters.AddWithValue("isLocked", DbBool(GetOptionalBool(payload, "isLocked", "is_locked")));
+        AddNullableGuid(command, "targetLocationId", GetOptionalGuid(payload, "targetLocationId", "target_location_id", "целеваяЛокацияId"));
+        command.Parameters.AddWithValue("isLocked", DbBool(GetOptionalBool(payload, "isLocked", "is_locked", "заперт")));
         command.Parameters.AddWithValue("objectType", DbString(GetOptionalString(payload, "objectType", "object_type", "type", "тип")));
         command.Parameters.AddWithValue("state", DbString(GetOptionalString(payload, "state", "состояние")));
-        AddNullableGuid(command, "keyItemId", GetOptionalGuid(payload, "keyItemId", "key_item_id"));
+        AddNullableGuid(command, "keyItemId", GetOptionalGuid(payload, "keyItemId", "key_item_id", "ключПредметId"));
         command.Parameters.AddWithValue("role", DbString(GetOptionalString(payload, "role", "роль")));
         command.Parameters.AddWithValue("attitude", DbString(GetOptionalString(payload, "attitude", "отношение")));
-        command.Parameters.AddWithValue("isAlive", DbBool(GetOptionalBool(payload, "isAlive", "is_alive")));
+        command.Parameters.AddWithValue("isAlive", DbBool(GetOptionalBool(payload, "isAlive", "is_alive", "живой")));
         command.Parameters.AddWithValue("reputation", DbInt(GetOptionalInt(payload, "reputation", "репутация")));
         command.Parameters.AddWithValue("title", DbString(GetOptionalString(payload, "title", "name", "название")));
         command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "статус")));
-        command.Parameters.AddWithValue("rewardExperience", DbInt(GetOptionalInt(payload, "rewardExperience", "reward_experience")));
-        command.Parameters.AddWithValue("rewardCopper", DbInt(GetOptionalInt(payload, "rewardCopper", "reward_copper")));
-        command.Parameters.AddWithValue("rewardSilver", DbInt(GetOptionalInt(payload, "rewardSilver", "reward_silver")));
-        command.Parameters.AddWithValue("rewardGold", DbInt(GetOptionalInt(payload, "rewardGold", "reward_gold")));
-        command.Parameters.AddWithValue("rewardPlatinum", DbInt(GetOptionalInt(payload, "rewardPlatinum", "reward_platinum")));
-        command.Parameters.AddWithValue("isCompleted", DbBool(GetOptionalBool(payload, "isCompleted", "is_completed")));
-        command.Parameters.AddWithValue("sortOrder", DbInt(GetOptionalInt(payload, "sortOrder", "sort_order")));
+        command.Parameters.AddWithValue("rewardExperience", DbInt(GetOptionalInt(payload, "rewardExperience", "reward_experience", "наградаОпыт")));
+        command.Parameters.AddWithValue("rewardCopper", DbInt(GetOptionalInt(payload, "rewardCopper", "reward_copper", "наградаМедные")));
+        command.Parameters.AddWithValue("rewardSilver", DbInt(GetOptionalInt(payload, "rewardSilver", "reward_silver", "наградаСеребряные")));
+        command.Parameters.AddWithValue("rewardGold", DbInt(GetOptionalInt(payload, "rewardGold", "reward_gold", "наградаЗолотые")));
+        command.Parameters.AddWithValue("rewardPlatinum", DbInt(GetOptionalInt(payload, "rewardPlatinum", "reward_platinum", "наградаПлатиновые")));
+        command.Parameters.AddWithValue("isCompleted", DbBool(GetOptionalBool(payload, "isCompleted", "is_completed", "завершён")));
+        command.Parameters.AddWithValue("sortOrder", DbInt(GetOptionalInt(payload, "sortOrder", "sort_order", "порядок")));
         command.Parameters.AddWithValue("monsterType", DbString(GetOptionalString(payload, "monsterType", "monster_type", "type", "тип")));
-        command.Parameters.AddWithValue("hpCurrent", DbInt(GetOptionalInt(payload, "hpCurrent", "hp_current")));
-        command.Parameters.AddWithValue("hpMax", DbInt(GetOptionalInt(payload, "hpMax", "hp_max")));
-        command.Parameters.AddWithValue("armorClass", DbInt(GetOptionalInt(payload, "armorClass", "armor_class")));
-        command.Parameters.AddWithValue("initiativeBonus", DbInt(GetOptionalInt(payload, "initiativeBonus", "initiative_bonus")));
-        AddJsonb(command, "stats", GetOptionalElement(payload, "stats")?.GetRawText());
+        command.Parameters.AddWithValue("hpCurrent", DbInt(GetOptionalInt(payload, "hpCurrent", "hp_current", "хпТекущее")));
+        command.Parameters.AddWithValue("hpMax", DbInt(GetOptionalInt(payload, "hpMax", "hp_max", "хпМаксимум")));
+        command.Parameters.AddWithValue("armorClass", DbInt(GetOptionalInt(payload, "armorClass", "armor_class", "классДоспеха")));
+        command.Parameters.AddWithValue("initiativeBonus", DbInt(GetOptionalInt(payload, "initiativeBonus", "initiative_bonus", "инициатива")));
+        AddJsonb(command, "stats", GetOptionalElement(payload, "stats", "статы")?.GetRawText());
         AddJsonb(command, "abilities", GetOptionalElement(payload, "abilities", "способности")?.GetRawText());
         AddJsonb(command, "loot", GetOptionalElement(payload, "loot", "добыча")?.GetRawText());
 

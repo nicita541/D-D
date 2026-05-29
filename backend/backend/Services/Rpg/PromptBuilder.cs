@@ -5,6 +5,8 @@ namespace backend.Services.Rpg;
 
 public sealed class PromptBuilder : IPromptBuilder
 {
+    private const int RepairResponseExcerptMaxLength = 4000;
+
     public string BuildTurnPrompt(JsonElement context, string playerMessage)
     {
         var builder = new StringBuilder();
@@ -46,6 +48,40 @@ public sealed class PromptBuilder : IPromptBuilder
         builder.AppendLine();
         builder.AppendLine("СООБЩЕНИЕ ИГРОКА:");
         builder.AppendLine(playerMessage);
+        return builder.ToString();
+    }
+
+    public string BuildRepairPrompt(string invalidResponse, string validationError)
+    {
+        var responseExcerpt = invalidResponse.Length <= RepairResponseExcerptMaxLength
+            ? invalidResponse
+            : invalidResponse[..RepairResponseExcerptMaxLength];
+
+        var builder = new StringBuilder();
+        builder.AppendLine("Ты вернул невалидный JSON для русскоязычной RPG-игры.");
+        builder.AppendLine("Ошибка проверки: " + validationError);
+        builder.AppendLine("Верни только исправленный валидный JSON object. Без markdown, без ```json, без пояснений.");
+        builder.AppendLine("master_answer должен быть непустой строкой на русском языке.");
+        builder.AppendLine("changes обязателен и должен быть массивом. Если изменений нет, верни \"changes\": [].");
+        builder.AppendLine("operation разрешён только из списка: добавить_предмет, изменить_хп, изменить_ресурс, добавить_состояние, удалить_состояние, обновить_квест, добавить_запись_журнала, переместить_предмет.");
+        builder.AppendLine("Схема:");
+        builder.AppendLine("""
+{
+  "master_answer": "текст ответа мастера на русском",
+  "changes": [
+    {
+      "operation": "добавить_запись_журнала",
+      "payload": {
+        "тип": "master",
+        "текст": "краткая запись на русском",
+        "важное": false
+      }
+    }
+  ]
+}
+""");
+        builder.AppendLine("Прошлый ответ:");
+        builder.AppendLine(responseExcerpt);
         return builder.ToString();
     }
 }

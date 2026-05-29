@@ -120,6 +120,22 @@ public sealed class RpgControllerTests
     }
 
     [Fact]
+    public void HealthController_IsPublic()
+    {
+        Assert.NotNull(typeof(HealthController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
+    [Fact]
+    public void HealthController_GetHealth_ReturnsOk()
+    {
+        var controller = new HealthController(null!);
+
+        var result = controller.GetHealth();
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
     public void CombatRepository_NormalizesMonsterActorType()
     {
         Assert.Equal("monster", CombatRepository.NormalizeActorType(" Monster "));

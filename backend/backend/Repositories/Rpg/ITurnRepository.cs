@@ -5,7 +5,7 @@ namespace backend.Repositories.Rpg;
 
 public interface ITurnRepository
 {
-    Task<PendingTurn?> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken);
+    Task<PendingTurnCreationResult> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken);
 
     Task<JsonElement?> CompleteTurnAsync(
         PendingTurn turn,

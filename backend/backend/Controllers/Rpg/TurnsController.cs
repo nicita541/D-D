@@ -25,6 +25,7 @@ public sealed class TurnsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult> CreateTurn(Guid gameStateId, [FromBody] CreateTurnRequest? request, CancellationToken cancellationToken)
     {
@@ -36,6 +37,7 @@ public sealed class TurnsController : ControllerBase
             RpgResultStatus.Ok => StatusCode(StatusCodes.Status201Created, result.Value),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
+            RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
             RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, result.Value),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
@@ -65,6 +67,7 @@ public sealed class TurnsController : ControllerBase
             RpgResultStatus.Ok => Ok(result.Value),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
+            RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
             RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, result.Value),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };

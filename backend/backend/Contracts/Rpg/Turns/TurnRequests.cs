@@ -27,3 +27,19 @@ public sealed record PendingTurn(
     Guid AccountId,
     int TurnNumber,
     string PlayerMessage);
+
+public enum PendingTurnCreationStatus
+{
+    Created,
+    NotFound,
+    Conflict
+}
+
+public sealed record PendingTurnCreationResult(PendingTurnCreationStatus Status, PendingTurn? Turn)
+{
+    public static PendingTurnCreationResult Created(PendingTurn turn) => new(PendingTurnCreationStatus.Created, turn);
+
+    public static PendingTurnCreationResult NotFound() => new(PendingTurnCreationStatus.NotFound, null);
+
+    public static PendingTurnCreationResult Conflict() => new(PendingTurnCreationStatus.Conflict, null);
+}
