@@ -254,11 +254,6 @@ public sealed class CombatRepository : ICombatRepository
             throw new CombatValidationException("типАктера должен быть character, npc или monster.");
         }
 
-        if (false && normalized == "monster")
-        {
-            throw new CombatValidationException("типАктера monster пока не поддерживается: нет таблицы monsters/enemies.");
-        }
-
         return normalized;
     }
 
