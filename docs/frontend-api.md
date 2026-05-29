@@ -209,6 +209,103 @@ Auth response:
 
 `DELETE /api/game-states/{gameStateId}/characters/{characterId}/attacks/{attackId}`
 
+## Rolls
+
+`POST /api/game-states/{gameStateId}/rolls`
+
+Canonical body:
+
+```json
+{
+  "формула": "1d20+4",
+  "причина": "Проверка силы",
+  "персонажId": "<characterId or null>"
+}
+```
+
+Compatibility body:
+
+```json
+{
+  "formula": "1d20+4",
+  "reason": "Проверка силы",
+  "characterId": "<characterId or null>"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "<rollId>",
+  "gameStateId": "<gameStateId>",
+  "characterId": "<characterId>",
+  "formula": "1d20+4",
+  "reason": "Проверка силы",
+  "rolls": [12],
+  "modifier": 4,
+  "total": 16,
+  "createdAt": "2026-05-29T12:00:00Z"
+}
+```
+
+`GET /api/game-states/{gameStateId}/rolls?limit=50`
+
+Поддержанные формулы: `d20`, `1d20`, `1d20+4`, `1d20-1`, `2d6`, `1d8+2`.
+
+## Ability Checks
+
+`POST /api/game-states/{gameStateId}/checks/ability`
+
+Canonical body:
+
+```json
+{
+  "персонажId": "<characterId>",
+  "характеристика": "ловкость",
+  "сложность": 14,
+  "причина": "Перепрыгнуть через провал"
+}
+```
+
+Compatibility body:
+
+```json
+{
+  "characterId": "<characterId>",
+  "ability": "dexterity",
+  "difficultyClass": 14,
+  "reason": "Перепрыгнуть через провал"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "<checkId>",
+  "roll": {
+    "id": "<rollId>",
+    "formula": "1d20+1",
+    "rolls": [14],
+    "modifier": 1,
+    "total": 15
+  },
+  "characterId": "<characterId>",
+  "ability": "ловкость",
+  "abilityScore": 12,
+  "modifier": 1,
+  "difficultyClass": 14,
+  "total": 15,
+  "success": true,
+  "reason": "Перепрыгнуть через провал"
+}
+```
+
+`GET /api/game-states/{gameStateId}/checks?limit=50`
+
+Характеристики: `сила`, `ловкость`, `телосложение`, `интеллект`, `мудрость`, `харизма`. Английские aliases тоже принимаются.
+
 ## World / Monsters
 
 `POST /api/game-states/{gameStateId}/world/monsters`
@@ -332,6 +429,34 @@ Statuses:
 
 Если в игре уже есть `pending` turn, новый `POST /turns` возвращает `409`.
 
+## Campaign Memory
+
+`GET /api/game-states/{gameStateId}/memory`
+
+`PUT /api/game-states/{gameStateId}/memory`
+
+Canonical body:
+
+```json
+{
+  "резюме": "Герои прибыли к старому колодцу.",
+  "текущаяСцена": {
+    "место": "Старый колодец",
+    "настроение": "тревожное"
+  },
+  "важныеФакты": ["У колодца найден знак культа."],
+  "открытыеЛинии": ["Выяснить, кто оставил знак."],
+  "закрытыеЛинии": [],
+  "известныеNpc": [],
+  "известныеЛокации": [{ "название": "Старый колодец" }],
+  "секретыМастера": []
+}
+```
+
+Compatibility aliases: `summary`, `currentScene`, `importantFacts`, `openThreads`, `resolvedThreads`, `knownNpcs`, `knownLocations`, `masterSecrets`.
+
+Важно: `секретыМастера` backend возвращает для будущего GM mode, но обычный player UI не должен показывать это поле игроку.
+
 ## Pending Changes
 
 `GET /api/game-states/{gameStateId}/changes?status=pending`
@@ -348,7 +473,40 @@ Reject body:
 }
 ```
 
-Поддержанные operations: `добавить_предмет`, `изменить_хп`, `изменить_ресурс`, `добавить_состояние`, `удалить_состояние`, `обновить_квест`, `добавить_запись_журнала`, `переместить_предмет`.
+Поддержанные operations в AI response: `добавить_предмет`, `изменить_хп`, `изменить_ресурс`, `добавить_состояние`, `удалить_состояние`, `обновить_квест`, `добавить_запись_журнала`, `переместить_предмет`, `запросить_бросок`, `обновить_память`.
+
+Новые operations этого slice:
+
+```json
+{
+  "operation": "запросить_бросок",
+  "payload": {
+    "тип": "ability_check",
+    "персонажId": "<characterId or null>",
+    "характеристика": "ловкость",
+    "сложность": 14,
+    "причина": "Перепрыгнуть через провал"
+  }
+}
+```
+
+```json
+{
+  "operation": "обновить_память",
+  "payload": {
+    "добавитьКРезюме": "Герои нашли знак культа у старого колодца.",
+    "текущаяСцена": {},
+    "важныеФактыДобавить": [],
+    "открытыеЛинииДобавить": [],
+    "закрытыеЛинииДобавить": [],
+    "известныеNpcОбновить": [],
+    "известныеЛокацииОбновить": [],
+    "секретыМастераДобавить": []
+  }
+}
+```
+
+В этом slice backend только разрешает эти operations в AI response и документации. `apply` для `запросить_бросок`/`обновить_память`, mechanic request resolve, combat engine, XP/level-up и AI memory summarization пока не реализованы.
 
 ## Full MVP Scenario
 
@@ -366,6 +524,23 @@ Reject body:
 12. `POST /api/game-states/{gameStateId}/turns` отправить сообщение игрока.
 13. `GET /api/game-states/{gameStateId}/changes?status=pending` увидеть предложенные изменения.
 14. `POST /api/game-states/{gameStateId}/changes/{changeId}/apply` применить изменение или `/reject` отклонить.
+
+## Mechanics / Memory Flow
+
+Действие, которому нужен бросок:
+
+1. Frontend отправляет `POST /turns`.
+2. AI может вернуть pending change `operation = "запросить_бросок"`.
+3. В этом slice frontend может показать игроку требуемый бросок из payload.
+4. Фактический бросок выполняется через `POST /rolls` или `POST /checks/ability`.
+5. Результат броска можно отправить следующим `POST /turns` в тексте сообщения игрока.
+
+Долгая память кампании:
+
+1. Frontend может читать память через `GET /memory`.
+2. Frontend или GM-инструмент может обновлять память через `PUT /memory`.
+3. AI context следующего хода включает `памятьКампании`.
+4. AI может предложить `operation = "обновить_память"`, но apply для этой operation будет добавлен отдельным этапом.
 
 ## Health
 

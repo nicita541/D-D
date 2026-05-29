@@ -111,6 +111,22 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                     ORDER BY turn_number DESC, created_at DESC
                     LIMIT @recentEventsLimit
                 ) x
+            ),
+            memory_doc AS (
+                SELECT jsonb_build_object(
+                    'резюме', cm.summary,
+                    'текущаяСцена', cm.current_scene,
+                    'важныеФакты', cm.important_facts,
+                    'открытыеЛинии', cm.open_threads,
+                    'закрытыеЛинии', cm.resolved_threads,
+                    'известныеNpc', cm.known_npcs,
+                    'известныеЛокации', cm.known_locations,
+                    'секретыМастера', cm.master_secrets,
+                    'updatedAt', cm.updated_at
+                ) AS data
+                FROM game.campaign_memories cm
+                WHERE cm.game_state_id = @gameStateId
+                LIMIT 1
             )
             SELECT jsonb_build_object(
                 'gameStateId', sd.game_state_id,
@@ -122,6 +138,19 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 'мир', sd.data->'мир',
                 'квесты', sd.data->'квесты',
                 'последниеСобытия', COALESCE((SELECT data FROM recent_history), '[]'::jsonb),
+                'памятьКампании', COALESCE(
+                    (SELECT data FROM memory_doc),
+                    jsonb_build_object(
+                        'резюме', '',
+                        'текущаяСцена', '{}'::jsonb,
+                        'важныеФакты', '[]'::jsonb,
+                        'открытыеЛинии', '[]'::jsonb,
+                        'закрытыеЛинии', '[]'::jsonb,
+                        'известныеNpc', '[]'::jsonb,
+                        'известныеЛокации', '[]'::jsonb,
+                        'секретыМастера', '[]'::jsonb
+                    )
+                ),
                 'бой', COALESCE((SELECT data FROM combat_doc), '{}'::jsonb)
             )::text
             FROM state_doc sd;

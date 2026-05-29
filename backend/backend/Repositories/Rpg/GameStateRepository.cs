@@ -59,14 +59,36 @@ public sealed class GameStateRepository : IGameStateRepository
     public async Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        const string sql = "SELECT game.create_new_game(@accountId, @name);";
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("name", string.IsNullOrWhiteSpace(name) ? "Новая игра" : name.Trim());
+        try
+        {
+            const string sql = "SELECT game.create_new_game(@accountId, @name);";
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("name", string.IsNullOrWhiteSpace(name) ? "Новая игра" : name.Trim());
 
-        return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Game state id was not returned."));
+            var gameStateId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
+                ?? throw new InvalidOperationException("Game state id was not returned."));
+
+            const string memorySql = """
+                INSERT INTO game.campaign_memories (game_state_id)
+                VALUES (@gameStateId)
+                ON CONFLICT (game_state_id) DO NOTHING;
+            """;
+
+            await using var memoryCommand = new NpgsqlCommand(memorySql, connection, transaction);
+            memoryCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+            await memoryCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            return gameStateId;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<bool> DeleteGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)

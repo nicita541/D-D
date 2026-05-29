@@ -23,7 +23,9 @@ public sealed class TurnService : ITurnService
         "удалить_состояние",
         "обновить_квест",
         "добавить_запись_журнала",
-        "переместить_предмет"
+        "переместить_предмет",
+        "запросить_бросок",
+        "обновить_память"
     };
 
     private readonly ITurnRepository _turns;

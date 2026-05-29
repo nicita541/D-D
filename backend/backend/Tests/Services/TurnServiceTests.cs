@@ -57,6 +57,25 @@ public sealed class TurnServiceTests
         Assert.Empty(repository.LastChanges!);
     }
 
+    [Theory]
+    [InlineData("запросить_бросок")]
+    [InlineData("обновить_память")]
+    public async Task CreateTurn_AllowsNewAiOperations(string operation)
+    {
+        var repository = new FakeTurnRepository();
+        var response = "{\"master_answer\":\"Ответ мастера\",\"changes\":[{\"operation\":\"" + operation + "\",\"payload\":{}}]}";
+        var service = CreateService(
+            repository,
+            new QueueOllamaClient(new OllamaGenerateResult("model", response, """{"response":"ok"}""")));
+
+        var result = await service.CreateTurnAsync(Guid.NewGuid(), Guid.NewGuid(), new CreateTurnRequest { Message = "go" }, CancellationToken.None);
+
+        Assert.Equal(RpgResultStatus.Ok, result.Status);
+        Assert.True(repository.CompleteCalled);
+        Assert.Single(repository.LastChanges!);
+        Assert.Equal(operation, repository.LastChanges![0].Operation);
+    }
+
     [Fact]
     public async Task CreateTurn_RetriesAndCompletes_WhenFirstAiJsonIsInvalid()
     {
