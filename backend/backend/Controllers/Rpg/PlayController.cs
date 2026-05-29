@@ -1,4 +1,5 @@
-﻿using backend.Contracts.Rpg.Common;
+﻿using System.Text.Json;
+using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Turns;
 using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
@@ -25,18 +26,71 @@ public sealed class PlayController : ControllerBase
     private readonly IGameStateService _gameStates;
     private readonly ICharacterService _characters;
     private readonly ITurnService _turns;
+    private readonly IGameChangeService _changes;
+    private readonly IMechanicRequestService _mechanicRequests;
+    private readonly ICampaignMemoryService _memory;
+    private readonly ICombatService _combat;
     private readonly ICurrentUserService _currentUser;
 
     public PlayController(
         IGameStateService gameStates,
         ICharacterService characters,
         ITurnService turns,
+        IGameChangeService changes,
+        IMechanicRequestService mechanicRequests,
+        ICampaignMemoryService memory,
+        ICombatService combat,
         ICurrentUserService currentUser)
     {
         _gameStates = gameStates;
         _characters = characters;
         _turns = turns;
+        _changes = changes;
+        _mechanicRequests = mechanicRequests;
+        _memory = memory;
+        _combat = combat;
         _currentUser = currentUser;
+    }
+
+    [HttpGet("status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Status(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+
+        var gameState = await _gameStates.GetGameStateAsync(current.AccountId, gameStateId, cancellationToken);
+        if (!gameState.HasValue)
+        {
+            return NotFound(new MessageResponse { Message = "GameState не найден." });
+        }
+
+        var characters = await _characters.GetCharactersAsync(current.AccountId, gameStateId, cancellationToken);
+        var turns = await _turns.GetTurnsAsync(current.AccountId, gameStateId, cancellationToken);
+        var pendingChanges = await _changes.GetChangesAsync(current.AccountId, gameStateId, "pending", cancellationToken);
+        var mechanicRequests = await _mechanicRequests.GetRequestsAsync(current.AccountId, gameStateId, "pending", cancellationToken);
+        var memory = await _memory.GetMemoryAsync(current.AccountId, gameStateId, cancellationToken);
+        var combat = await _combat.GetCombatStateAsync(current.AccountId, gameStateId, cancellationToken);
+
+        return Ok(new
+        {
+            gameState = gameState.Value,
+            characters,
+            recentTurns = turns.Status == RpgResultStatus.Ok
+                ? turns.Value
+                : Array.Empty<JsonElement>(),
+            pendingChanges = pendingChanges.Status == RpgResultStatus.Ok
+                ? pendingChanges.Value
+                : Array.Empty<JsonElement>(),
+            mechanicRequests = mechanicRequests.Status == RpgResultStatus.Ok
+                ? mechanicRequests.Value
+                : Array.Empty<JsonElement>(),
+            memory = memory.Status == RpgResultStatus.Ok
+                ? (JsonElement?)memory.Value
+                : null,
+            combat,
+            generatedAt = DateTimeOffset.UtcNow
+        });
     }
 
     [HttpPost("start")]

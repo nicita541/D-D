@@ -202,8 +202,9 @@ $importantRoutes = @(
 
     "/api/game-states/{gameStateId}/ai-context",
 
-    "/api/game-states/{gameStateId}/play/start",
-    "/api/game-states/{gameStateId}/play/message",
+"/api/game-states/{gameStateId}/play/status",
+"/api/game-states/{gameStateId}/play/start",
+"/api/game-states/{gameStateId}/play/message",
 
     "/api/game-states/{gameStateId}/turns",
     "/api/game-states/{gameStateId}/turns/{turnId}",
@@ -444,6 +445,14 @@ Write-Step "Mechanic requests and changes"
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/mechanic-requests" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET mechanic requests" | Out-Null
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/changes" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET changes" | Out-Null
 
+Write-Step "Play status before turns"
+Invoke-Api `
+    -Method "GET" `
+    -Path "/api/game-states/$gameStateId/play/status" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(200) `
+    -Name "GET play/status before turns" | Out-Null
+
 Write-Step "Play start/message"
 $start = Invoke-Api `
     -Method "POST" `
@@ -456,6 +465,14 @@ $start = Invoke-Api `
 if ($start -is [string]) {
     Write-Host "play/start returned raw content."
 }
+
+Write-Step "Play status after turns"
+Invoke-Api `
+    -Method "GET" `
+    -Path "/api/game-states/$gameStateId/play/status" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(200) `
+    -Name "GET play/status after turns" | Out-Null
 
 $message = Invoke-Api `
     -Method "POST" `
