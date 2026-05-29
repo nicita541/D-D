@@ -214,6 +214,9 @@ public sealed class AllApiSurfaceContractTests
 
             "GET api/game-states/{gameStateId:guid}/ai-context",
 
+            "POST api/game-states/{gameStateId:guid}/play/start",
+            "POST api/game-states/{gameStateId:guid}/play/message",
+
             "POST api/game-states/{gameStateId:guid}/rolls",
             "POST api/game-states/{gameStateId:guid}/checks/ability",
             "GET api/game-states/{gameStateId:guid}/checks",
