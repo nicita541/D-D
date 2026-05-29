@@ -104,6 +104,9 @@ public sealed class InventoryItemRequest
     [JsonPropertyName("item_type")]
     public string? ItemTypeSnake { get; set; }
 
+    [JsonPropertyName("itemType")]
+    public string? ItemTypeAlias { get; set; }
+
     [JsonPropertyName("подтип")]
     public string? Subtype { get; set; }
 
@@ -119,6 +122,9 @@ public sealed class InventoryItemRequest
     [JsonPropertyName("количество")]
     public int Quantity { get; set; } = 1;
 
+    [JsonPropertyName("quantity")]
+    public int? QuantityAlias { get; set; }
+
     [JsonPropertyName("stackable")]
     public bool StackableAlias { get; set; }
 
@@ -130,6 +136,9 @@ public sealed class InventoryItemRequest
 
     [JsonPropertyName("weight_each")]
     public decimal WeightEachSnake { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? WeightAlias { get; set; }
 
     [JsonPropertyName("состояние")]
     public string? Condition { get; set; }
@@ -175,6 +184,58 @@ public sealed class InventoryItemRequest
 
     [JsonPropertyName("теги")]
     public JsonElement? Tags { get; set; }
+
+    [JsonPropertyName("slot")]
+    public string? Slot { get; set; }
+
+    [JsonPropertyName("слот")]
+    public string? SlotRu { get; set; }
+
+    [JsonPropertyName("properties")]
+    public JsonElement? Properties { get; set; }
+
+    [JsonPropertyName("свойства")]
+    public JsonElement? PropertiesRu { get; set; }
+
+    [JsonIgnore]
+    public string? ResolvedName => string.IsNullOrWhiteSpace(Name)
+        ? NameAlias?.Trim()
+        : Name.Trim();
+
+    [JsonIgnore]
+    public string? ResolvedItemType => string.IsNullOrWhiteSpace(ItemType)
+        ? string.IsNullOrWhiteSpace(ItemTypeAlias)
+            ? ItemTypeSnake?.Trim()
+            : ItemTypeAlias.Trim()
+        : ItemType.Trim();
+
+    [JsonIgnore]
+    public int ResolvedQuantity => QuantityAlias ?? Quantity;
+
+    [JsonIgnore]
+    public decimal ResolvedWeightEach => WeightAlias ?? (WeightEach != 0 ? WeightEach : WeightEachSnake);
+
+    [JsonIgnore]
+    public string? ResolvedSlot => string.IsNullOrWhiteSpace(SlotRu)
+        ? Slot?.Trim()
+        : SlotRu.Trim();
+
+    [JsonIgnore]
+    public JsonElement? ResolvedProperties => PropertiesRu ?? Properties;
+}
+
+public sealed class InventoryItemActionRequest
+{
+    [JsonPropertyName("slot")]
+    public string? Slot { get; set; }
+
+    [JsonPropertyName("слот")]
+    public string? SlotRu { get; set; }
+
+    [JsonIgnore]
+    public string? ResolvedSlot => string.IsNullOrWhiteSpace(SlotRu)
+        ? Slot?.Trim()
+        : SlotRu.Trim();
 }
 
 public sealed class EquipmentRequest

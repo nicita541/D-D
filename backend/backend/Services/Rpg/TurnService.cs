@@ -14,19 +14,7 @@ public sealed class TurnService : ITurnService
     private const int RawAiResponseMaxLength = 60000;
     private const int DiagnosticFieldMaxLength = 20000;
 
-    private static readonly HashSet<string> AllowedOperations = new(StringComparer.Ordinal)
-    {
-        "добавить_предмет",
-        "изменить_хп",
-        "изменить_ресурс",
-        "добавить_состояние",
-        "удалить_состояние",
-        "обновить_квест",
-        "добавить_запись_журнала",
-        "переместить_предмет",
-        "запросить_бросок",
-        "обновить_память"
-    };
+    private static readonly HashSet<string> AllowedOperations = new(GameChangeOperationPolicy.AllowedAiOperations, StringComparer.OrdinalIgnoreCase);
 
     private readonly ITurnRepository _turns;
     private readonly IAiMasterContextService _context;

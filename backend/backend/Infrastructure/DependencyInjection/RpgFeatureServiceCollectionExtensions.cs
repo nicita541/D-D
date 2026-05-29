@@ -23,6 +23,7 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddScoped<ICampaignMemoryRepository, CampaignMemoryRepository>();
         services.AddScoped<IMechanicRequestRepository, MechanicRequestRepository>();
         services.AddScoped<ICharacterProgressionRepository, CharacterProgressionRepository>();
+        services.AddScoped<IPlayBootstrapRepository, PlayBootstrapRepository>();
 
         services.AddScoped<IGameStateService, GameStateService>();
         services.AddScoped<ICharacterService, CharacterService>();
@@ -40,6 +41,7 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddScoped<ICampaignMemoryService, CampaignMemoryService>();
         services.AddScoped<IMechanicRequestService, MechanicRequestService>();
         services.AddScoped<ICharacterProgressionService, CharacterProgressionService>();
+        services.AddScoped<IPlayBootstrapService, PlayBootstrapService>();
         services.AddScoped<IPromptBuilder, PromptBuilder>();
         services.AddSingleton<IDiceRoller, DiceRoller>();
 

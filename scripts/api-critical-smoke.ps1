@@ -205,6 +205,20 @@ $importantRoutes = @(
 "/api/game-states/{gameStateId}/play/status",
 "/api/game-states/{gameStateId}/play/start",
 "/api/game-states/{gameStateId}/play/message",
+"/api/game-states/{gameStateId}/play/resolve-mechanic-request/{requestId}",
+"/api/game-states/{gameStateId}/play/continue",
+"/api/game-states/{gameStateId}/play/apply-change/{changeId}",
+"/api/game-states/{gameStateId}/play/reject-change/{changeId}",
+"/api/game-states/{gameStateId}/play/apply-safe-changes",
+"/api/game-states/{gameStateId}/play/summarize",
+"/api/game-states/{gameStateId}/play/bootstrap",
+
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory",
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items",
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}/equip",
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}/unequip",
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}/use",
+    "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}",
 
     "/api/game-states/{gameStateId}/turns",
     "/api/game-states/{gameStateId}/turns/{turnId}",
@@ -392,6 +406,69 @@ Invoke-ApiRawJson `
     -Name "PUT character" `
     -Json $updateCharacterJson | Out-Null
 
+Write-Step "Inventory MVP"
+Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET inventory" | Out-Null
+
+$weapon = Invoke-Api `
+    -Method "POST" `
+    -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(201) `
+    -Name "POST inventory weapon" `
+    -Body @{
+        name = "Smoke Sword"
+        description = "Weapon created by smoke test."
+        itemType = "weapon"
+        quantity = 1
+        weight = 1
+        slot = "main_hand"
+        properties = @{}
+    }
+
+$weaponId = $weapon.id
+if ([string]::IsNullOrWhiteSpace($weaponId)) {
+    throw "Create inventory weapon did not return id."
+}
+
+$consumable = Invoke-Api `
+    -Method "POST" `
+    -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(201) `
+    -Name "POST inventory consumable" `
+    -Body @{
+        name = "Smoke Potion"
+        description = "Potion created by smoke test."
+        itemType = "consumable"
+        quantity = 1
+        weight = 0
+        properties = @{
+            effect = "heal"
+            amount = 1
+        }
+    }
+
+$consumableId = $consumable.id
+if ([string]::IsNullOrWhiteSpace($consumableId)) {
+    throw "Create inventory consumable did not return id."
+}
+
+Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET inventory after create" | Out-Null
+Invoke-Api -Method "POST" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items/$weaponId/equip" -Headers $authHeaders -ExpectedStatus @(200) -Name "POST inventory equip weapon" -Body @{} | Out-Null
+Invoke-Api -Method "POST" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items/$weaponId/unequip" -Headers $authHeaders -ExpectedStatus @(200) -Name "POST inventory unequip weapon" -Body @{} | Out-Null
+Invoke-Api -Method "POST" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items/$consumableId/use" -Headers $authHeaders -ExpectedStatus @(200) -Name "POST inventory use consumable" -Body @{} | Out-Null
+Invoke-Api -Method "DELETE" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory/items/$weaponId" -Headers $authHeaders -ExpectedStatus @(200) -Name "DELETE inventory weapon" | Out-Null
+Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/characters/$characterId/inventory" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET inventory final" | Out-Null
+
+Write-Step "Play bootstrap"
+Invoke-Api `
+    -Method "POST" `
+    -Path "/api/game-states/$gameStateId/play/bootstrap" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(200, 201, 409) `
+    -Name "POST play/bootstrap" `
+    -Body @{} | Out-Null
+
 Write-Step "AI context"
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/ai-context" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET ai-context" | Out-Null
 
@@ -444,14 +521,19 @@ Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/memory" -Headers $
 Write-Step "Mechanic requests and changes"
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/mechanic-requests" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET mechanic requests" | Out-Null
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/changes" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET changes" | Out-Null
+Invoke-Api -Method "POST" -Path "/api/game-states/$gameStateId/play/apply-safe-changes" -Headers $authHeaders -ExpectedStatus @(200) -Name "POST play/apply-safe-changes empty" -Body @{} | Out-Null
 
 Write-Step "Play status before turns"
-Invoke-Api `
+$statusBefore = Invoke-Api `
     -Method "GET" `
     -Path "/api/game-states/$gameStateId/play/status" `
     -Headers $authHeaders `
     -ExpectedStatus @(200) `
-    -Name "GET play/status before turns" | Out-Null
+    -Name "GET play/status before turns"
+
+if (-not ($statusBefore.PSObject.Properties.Name -contains "scene")) {
+    throw "play/status response does not contain scene before turns."
+}
 
 Write-Step "Play start/message"
 $start = Invoke-Api `
@@ -467,12 +549,16 @@ if ($start -is [string]) {
 }
 
 Write-Step "Play status after turns"
-Invoke-Api `
+$statusAfter = Invoke-Api `
     -Method "GET" `
     -Path "/api/game-states/$gameStateId/play/status" `
     -Headers $authHeaders `
     -ExpectedStatus @(200) `
-    -Name "GET play/status after turns" | Out-Null
+    -Name "GET play/status after turns"
+
+if (-not ($statusAfter.PSObject.Properties.Name -contains "scene")) {
+    throw "play/status response does not contain scene after turns."
+}
 
 $message = Invoke-Api `
     -Method "POST" `

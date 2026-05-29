@@ -74,6 +74,15 @@ public sealed class CharacterDomainService : ICharacterDomainService
     public Task<RpgResult<bool>> DeleteInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
         => Update(() => _repository.DeleteInventoryItemAsync(accountId, gameStateId, characterId, itemId, cancellationToken));
 
+    public Task<RpgResult<bool>> EquipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, InventoryItemActionRequest request, CancellationToken cancellationToken)
+        => Update(() => _repository.EquipInventoryItemAsync(accountId, gameStateId, characterId, itemId, request.ResolvedSlot, cancellationToken));
+
+    public Task<RpgResult<bool>> UnequipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => Update(() => _repository.UnequipInventoryItemAsync(accountId, gameStateId, characterId, itemId, cancellationToken));
+
+    public Task<RpgResult<bool>> UseInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => Update(() => _repository.UseInventoryItemAsync(accountId, gameStateId, characterId, itemId, cancellationToken));
+
     public Task<RpgResult<JsonElement>> GetEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
         => Value(() => _repository.GetEquipmentAsync(accountId, gameStateId, characterId, cancellationToken));
 
@@ -126,6 +135,10 @@ public sealed class CharacterDomainService : ICharacterDomainService
         {
             return RpgResult<IReadOnlyList<JsonElement>>.BadRequest(ex.Message);
         }
+        catch (RpgConflictException ex)
+        {
+            return RpgResult<IReadOnlyList<JsonElement>>.Conflict(ex.Message);
+        }
     }
 
     private static async Task<RpgResult<JsonElement>> Value(Func<Task<JsonElement?>> action)
@@ -141,6 +154,10 @@ public sealed class CharacterDomainService : ICharacterDomainService
         {
             return RpgResult<JsonElement>.BadRequest(ex.Message);
         }
+        catch (RpgConflictException ex)
+        {
+            return RpgResult<JsonElement>.Conflict(ex.Message);
+        }
     }
 
     private static async Task<RpgResult<Guid>> Create(Func<Task<Guid?>> action)
@@ -155,6 +172,10 @@ public sealed class CharacterDomainService : ICharacterDomainService
         catch (RpgValidationException ex)
         {
             return RpgResult<Guid>.BadRequest(ex.Message);
+        }
+        catch (RpgConflictException ex)
+        {
+            return RpgResult<Guid>.Conflict(ex.Message);
         }
     }
 
@@ -173,6 +194,10 @@ public sealed class CharacterDomainService : ICharacterDomainService
         catch (RpgValidationException ex)
         {
             return RpgResult<bool>.BadRequest(ex.Message);
+        }
+        catch (RpgConflictException ex)
+        {
+            return RpgResult<bool>.Conflict(ex.Message);
         }
     }
 }

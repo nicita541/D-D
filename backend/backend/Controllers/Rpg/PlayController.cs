@@ -1,5 +1,9 @@
 ﻿using System.Text.Json;
+using backend.Contracts.Rpg.Changes;
 using backend.Contracts.Rpg.Common;
+using backend.Contracts.Rpg.Mechanics;
+using backend.Contracts.Rpg.Memory;
+using backend.Contracts.Rpg.Play;
 using backend.Contracts.Rpg.Turns;
 using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
@@ -23,6 +27,11 @@ public sealed class PlayController : ControllerBase
         Если нужна проверка навыка или характеристики — предложи её через поддерживаемый JSON changes.
         """;
 
+    private const string DefaultContinueMessage = """
+        Продолжи сцену после последнего результата проверки или механического действия.
+        Учти последние resolved mechanic requests, броски, pending/applied changes и текущее состояние игры.
+        """;
+
     private readonly IGameStateService _gameStates;
     private readonly ICharacterService _characters;
     private readonly ITurnService _turns;
@@ -30,6 +39,7 @@ public sealed class PlayController : ControllerBase
     private readonly IMechanicRequestService _mechanicRequests;
     private readonly ICampaignMemoryService _memory;
     private readonly ICombatService _combat;
+    private readonly IPlayBootstrapService _bootstrap;
     private readonly ICurrentUserService _currentUser;
 
     public PlayController(
@@ -40,6 +50,7 @@ public sealed class PlayController : ControllerBase
         IMechanicRequestService mechanicRequests,
         ICampaignMemoryService memory,
         ICombatService combat,
+        IPlayBootstrapService bootstrap,
         ICurrentUserService currentUser)
     {
         _gameStates = gameStates;
@@ -49,6 +60,7 @@ public sealed class PlayController : ControllerBase
         _mechanicRequests = mechanicRequests;
         _memory = memory;
         _combat = combat;
+        _bootstrap = bootstrap;
         _currentUser = currentUser;
     }
 
@@ -72,6 +84,10 @@ public sealed class PlayController : ControllerBase
         var memory = await _memory.GetMemoryAsync(current.AccountId, gameStateId, cancellationToken);
         var combat = await _combat.GetCombatStateAsync(current.AccountId, gameStateId, cancellationToken);
 
+        var memoryValue = memory.Status == RpgResultStatus.Ok
+            ? (JsonElement?)memory.Value
+            : null;
+
         return Ok(new
         {
             gameState = gameState.Value,
@@ -85,9 +101,8 @@ public sealed class PlayController : ControllerBase
             mechanicRequests = mechanicRequests.Status == RpgResultStatus.Ok
                 ? mechanicRequests.Value
                 : Array.Empty<JsonElement>(),
-            memory = memory.Status == RpgResultStatus.Ok
-                ? (JsonElement?)memory.Value
-                : null,
+            memory = memoryValue,
+            scene = PlaySceneExtractor.Extract(memoryValue),
             combat,
             generatedAt = DateTimeOffset.UtcNow
         });
@@ -139,6 +154,148 @@ public sealed class PlayController : ControllerBase
         return ToActionResult(result);
     }
 
+    [HttpPost("resolve-mechanic-request/{requestId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult> ResolveMechanicRequest(
+        Guid gameStateId,
+        Guid requestId,
+        [FromBody] MechanicRequestResolveAbilityCheckRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var result = await _mechanicRequests.ResolveAbilityCheckAsync(
+            current.AccountId,
+            gameStateId,
+            requestId,
+            request ?? new MechanicRequestResolveAbilityCheckRequest(),
+            cancellationToken);
+
+        return ToActionResult(result);
+    }
+
+    [HttpPost("continue")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult> Continue(Guid gameStateId, [FromBody] PlayContinueRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var message = BuildContinueMessage(request ?? new PlayContinueRequest());
+        var result = await _turns.CreateTurnAsync(
+            current.AccountId,
+            gameStateId,
+            new CreateTurnRequest { Message = message },
+            cancellationToken);
+
+        return ToActionResult(result);
+    }
+
+    [HttpPost("apply-change/{changeId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> ApplyChange(Guid gameStateId, Guid changeId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var result = await _changes.ApplyChangeAsync(current.AccountId, gameStateId, changeId, cancellationToken);
+        return ToActionResult(result);
+    }
+
+    [HttpPost("reject-change/{changeId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> RejectChange(Guid gameStateId, Guid changeId, [FromBody] RejectGameChangeRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var reason = string.IsNullOrWhiteSpace(request?.ResolvedReason)
+            ? "Rejected by player."
+            : request.ResolvedReason;
+        var result = await _changes.RejectChangeAsync(current.AccountId, gameStateId, changeId, reason, cancellationToken);
+        return ToActionResult(result);
+    }
+
+    [HttpPost("apply-safe-changes")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> ApplySafeChanges(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var pendingChanges = await _changes.GetChangesAsync(current.AccountId, gameStateId, "pending", cancellationToken);
+        if (pendingChanges.Status != RpgResultStatus.Ok)
+        {
+            return ToActionResult(pendingChanges);
+        }
+
+        var applied = new List<object>();
+        var skipped = new List<object>();
+        var failed = new List<object>();
+
+        foreach (var change in pendingChanges.Value ?? Array.Empty<JsonElement>())
+        {
+            var changeId = GetOptionalGuid(change, "id");
+            var operation = GetOptionalString(change, "operation") ?? string.Empty;
+            if (!changeId.HasValue)
+            {
+                skipped.Add(new { id = (Guid?)null, operation, reason = "Change id отсутствует." });
+                continue;
+            }
+
+            var descriptor = GameChangeOperationPolicy.Describe(operation);
+            if (!descriptor.IsSafeAutoApply)
+            {
+                skipped.Add(new { id = changeId.Value, operation, reason = GetSkipReason(descriptor) });
+                continue;
+            }
+
+            var applyResult = await _changes.ApplyChangeAsync(current.AccountId, gameStateId, changeId.Value, cancellationToken);
+            if (applyResult.Status == RpgResultStatus.Ok)
+            {
+                applied.Add(new { id = changeId.Value, operation, result = applyResult.Value });
+            }
+            else
+            {
+                failed.Add(new { id = changeId.Value, operation, message = applyResult.Message ?? "Не удалось применить change." });
+            }
+        }
+
+        return Ok(new { applied, skipped, failed });
+    }
+
+    [HttpPost("summarize")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult> Summarize(Guid gameStateId, [FromBody] CampaignMemorySummarizeRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var result = await _memory.SummarizeMemoryAsync(
+            current.AccountId,
+            gameStateId,
+            request ?? new CampaignMemorySummarizeRequest(),
+            cancellationToken);
+
+        return ToActionResult(result);
+    }
+
+    [HttpPost("bootstrap")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult> Bootstrap(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var result = await _bootstrap.BootstrapAsync(current.AccountId, gameStateId, cancellationToken);
+        return ToActionResult(result);
+    }
+
     private ActionResult ToActionResult<T>(RpgResult<T> result)
         => result.Status switch
         {
@@ -146,7 +303,60 @@ public sealed class PlayController : ControllerBase
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
             RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
-            RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, result.Value),
+            RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, result.Value is null
+                ? new MessageResponse { Message = result.Message ?? "Service unavailable." }
+                : result.Value),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
+
+    private static string BuildContinueMessage(PlayContinueRequest request)
+    {
+        var message = string.IsNullOrWhiteSpace(request.ResolvedPlayerMessage)
+            ? DefaultContinueMessage
+            : request.ResolvedPlayerMessage;
+
+        return string.IsNullOrWhiteSpace(request.ResolvedNote)
+            ? message
+            : $"{message.Trim()}{Environment.NewLine}{Environment.NewLine}Дополнительная заметка игрока: {request.ResolvedNote}";
+    }
+
+    private static string GetSkipReason(GameChangeOperationDescriptor descriptor)
+    {
+        if (string.IsNullOrWhiteSpace(descriptor.OriginalOperation))
+        {
+            return "Operation отсутствует.";
+        }
+
+        return descriptor.Class switch
+        {
+            GameChangeOperationClass.Unknown => "unknown operation",
+            GameChangeOperationClass.Dangerous => "dangerous operation",
+            GameChangeOperationClass.Safe when !descriptor.IsSupported => "unsupported operation",
+            GameChangeOperationClass.Unsupported => "unsupported operation",
+            _ => "unsupported operation"
+        };
+    }
+
+    private static string? GetOptionalString(JsonElement source, string name)
+    {
+        return source.ValueKind == JsonValueKind.Object
+            && source.TryGetProperty(name, out var element)
+            && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
+    }
+
+    private static Guid? GetOptionalGuid(JsonElement source, string name)
+    {
+        if (source.ValueKind != JsonValueKind.Object
+            || !source.TryGetProperty(name, out var element)
+            || element.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return element.ValueKind == JsonValueKind.String && Guid.TryParse(element.GetString(), out var value)
+            ? value
+            : null;
+    }
 }

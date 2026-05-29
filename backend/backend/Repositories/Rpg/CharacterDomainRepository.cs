@@ -498,6 +498,140 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         return UpdateEntityAsync(accountId, gameStateId, characterId, itemId, sql, _ => { }, cancellationToken);
     }
 
+    public async Task<bool?> EquipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, string? slot, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        if (!await CharacterExistsAsync(connection, accountId, gameStateId, characterId, cancellationToken))
+        {
+            return null;
+        }
+
+        await EnsureEquipmentAsync(connection, gameStateId, characterId, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var item = await GetInventoryItemForUpdateAsync(connection, transaction, gameStateId, characterId, itemId, cancellationToken);
+            if (item is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            var normalizedSlot = NormalizeEquipmentSlot(slot ?? InferEquipmentSlot(item.Value.ItemType, item.Value.Tags));
+            var slotColumn = GetEquipmentSlotColumn(normalizedSlot);
+            var currentItemId = await GetEquippedSlotValueAsync(connection, transaction, gameStateId, characterId, slotColumn, cancellationToken);
+            if (currentItemId == itemId)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return true;
+            }
+
+            if (currentItemId.HasValue)
+            {
+                throw new RpgConflictException($"Слот {normalizedSlot} уже занят другим предметом.");
+            }
+
+            var sql = $"UPDATE game.equipped_gear SET {slotColumn} = @itemId WHERE game_state_id = @gameStateId AND player_id = @characterId;";
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("itemId", itemId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<bool?> UnequipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        if (!await CharacterExistsAsync(connection, accountId, gameStateId, characterId, cancellationToken))
+        {
+            return null;
+        }
+
+        if (!await InventoryItemExistsAsync(connection, gameStateId, characterId, itemId, cancellationToken))
+        {
+            return false;
+        }
+
+        await EnsureEquipmentAsync(connection, gameStateId, characterId, cancellationToken);
+        await ClearEquipmentItemAsync(connection, gameStateId, characterId, itemId, cancellationToken);
+        return true;
+    }
+
+    public async Task<bool?> UseInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        if (!await CharacterExistsAsync(connection, accountId, gameStateId, characterId, cancellationToken))
+        {
+            return null;
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var item = await GetInventoryItemForUpdateAsync(connection, transaction, gameStateId, characterId, itemId, cancellationToken);
+            if (item is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            if (!string.Equals(item.Value.ItemType, "consumable", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new RpgValidationException("Использовать можно только consumable предмет.");
+            }
+
+            if (item.Value.Quantity <= 1)
+            {
+                await ClearEquipmentItemAsync(connection, transaction, gameStateId, characterId, itemId, cancellationToken);
+                const string deleteSql = """
+                    DELETE FROM game.item_instances
+                    WHERE id = @itemId
+                      AND game_state_id = @gameStateId
+                      AND owner_kind = 'player_inventory'
+                      AND owner_id = @characterId;
+                """;
+                await using var deleteCommand = new NpgsqlCommand(deleteSql, connection, transaction);
+                deleteCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+                deleteCommand.Parameters.AddWithValue("characterId", characterId);
+                deleteCommand.Parameters.AddWithValue("itemId", itemId);
+                await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else
+            {
+                const string updateSql = """
+                    UPDATE game.item_instances
+                    SET quantity = quantity - 1
+                    WHERE id = @itemId
+                      AND game_state_id = @gameStateId
+                      AND owner_kind = 'player_inventory'
+                      AND owner_id = @characterId;
+                """;
+                await using var updateCommand = new NpgsqlCommand(updateSql, connection, transaction);
+                updateCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+                updateCommand.Parameters.AddWithValue("characterId", characterId);
+                updateCommand.Parameters.AddWithValue("itemId", itemId);
+                await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task<JsonElement?> GetEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
@@ -1045,6 +1179,16 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("entityId", entityId);
         configure(command);
+        if (!command.Parameters.Contains("gameStateId"))
+        {
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
+        }
+
+        if (!command.Parameters.Contains("characterId"))
+        {
+            command.Parameters.AddWithValue("characterId", characterId);
+        }
+
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
@@ -1200,6 +1344,194 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task<InventoryItemRow?> GetInventoryItemForUpdateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        Guid characterId,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT item_type, quantity, tags::text
+            FROM game.item_instances
+            WHERE id = @itemId
+              AND game_state_id = @gameStateId
+              AND owner_kind = 'player_inventory'
+              AND owner_id = @characterId
+            FOR UPDATE;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("itemId", itemId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new InventoryItemRow(
+            reader.GetString(0),
+            reader.GetInt32(1),
+            RpgDbJson.ParseElement(reader.GetString(2)));
+    }
+
+    private static async Task<bool> InventoryItemExistsAsync(NpgsqlConnection connection, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM game.item_instances
+                WHERE id = @itemId
+                  AND game_state_id = @gameStateId
+                  AND owner_kind = 'player_inventory'
+                  AND owner_id = @characterId
+            );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("itemId", itemId);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task<Guid?> GetEquippedSlotValueAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        Guid characterId,
+        string slotColumn,
+        CancellationToken cancellationToken)
+    {
+        var sql = $"SELECT {slotColumn} FROM game.equipped_gear WHERE game_state_id = @gameStateId AND player_id = @characterId FOR UPDATE;";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? null : (Guid)value;
+    }
+
+    private static Task ClearEquipmentItemAsync(NpgsqlConnection connection, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => ClearEquipmentItemAsync(connection, null, gameStateId, characterId, itemId, cancellationToken);
+
+    private static async Task ClearEquipmentItemAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid gameStateId,
+        Guid characterId,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.equipped_gear
+            SET head_item_id = NULLIF(head_item_id, @itemId),
+                body_item_id = NULLIF(body_item_id, @itemId),
+                hands_item_id = NULLIF(hands_item_id, @itemId),
+                legs_item_id = NULLIF(legs_item_id, @itemId),
+                feet_item_id = NULLIF(feet_item_id, @itemId),
+                main_hand_item_id = NULLIF(main_hand_item_id, @itemId),
+                off_hand_item_id = NULLIF(off_hand_item_id, @itemId),
+                amulet_item_id = NULLIF(amulet_item_id, @itemId),
+                ring1_item_id = NULLIF(ring1_item_id, @itemId),
+                ring2_item_id = NULLIF(ring2_item_id, @itemId)
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId;
+        """;
+
+        await using var command = transaction is null
+            ? new NpgsqlCommand(sql, connection)
+            : new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("itemId", itemId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static string InferEquipmentSlot(string itemType, JsonElement tags)
+    {
+        if (tags.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var propertyName in new[] { "slot", "слот" })
+            {
+                if (tags.TryGetProperty(propertyName, out var slotElement)
+                    && slotElement.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(slotElement.GetString()))
+                {
+                    return slotElement.GetString()!;
+                }
+            }
+        }
+
+        return itemType.Trim().ToLowerInvariant() switch
+        {
+            "weapon" => "main_hand",
+            "armor" => "body",
+            _ => throw new RpgValidationException("slot обязателен для экипировки этого предмета.")
+        };
+    }
+
+    private static string NormalizeEquipmentSlot(string slot)
+    {
+        return slot.Trim().ToLowerInvariant() switch
+        {
+            "head" or "голова" => "head",
+            "body" or "тело" => "body",
+            "hands" or "руки" => "hands",
+            "legs" or "ноги" => "legs",
+            "feet" or "обувь" => "feet",
+            "main_hand" or "mainhand" or "main-hand" or "основнаярука" or "основная_рука" => "main_hand",
+            "off_hand" or "offhand" or "off-hand" or "втораярука" or "вторая_рука" => "off_hand",
+            "amulet" or "амулет" => "amulet",
+            "ring1" or "ring_1" or "кольцо1" => "ring1",
+            "ring2" or "ring_2" or "кольцо2" => "ring2",
+            _ => throw new RpgValidationException("slot экипировки не поддерживается.")
+        };
+    }
+
+    private static string GetEquipmentSlotColumn(string slot)
+        => slot switch
+        {
+            "head" => "head_item_id",
+            "body" => "body_item_id",
+            "hands" => "hands_item_id",
+            "legs" => "legs_item_id",
+            "feet" => "feet_item_id",
+            "main_hand" => "main_hand_item_id",
+            "off_hand" => "off_hand_item_id",
+            "amulet" => "amulet_item_id",
+            "ring1" => "ring1_item_id",
+            "ring2" => "ring2_item_id",
+            _ => throw new RpgValidationException("slot экипировки не поддерживается.")
+        };
+
+    private static string ResolveInventoryTagsJson(InventoryItemRequest request)
+    {
+        if (request.Tags.HasValue && request.Tags.Value.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null)
+        {
+            return request.Tags.Value.GetRawText();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ResolvedSlot) && !request.ResolvedProperties.HasValue)
+        {
+            return "[]";
+        }
+
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["slot"] = request.ResolvedSlot
+        };
+
+        if (request.ResolvedProperties.HasValue && request.ResolvedProperties.Value.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null)
+        {
+            payload["properties"] = request.ResolvedProperties.Value;
+        }
+
+        return JsonSerializer.Serialize(payload);
+    }
+
     private static void AddConditionParameters(NpgsqlCommand command, Guid gameStateId, Guid characterId, ConditionRequest request)
     {
         command.Parameters.AddWithValue("gameStateId", gameStateId);
@@ -1244,13 +1576,13 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("templateId", RpgDbJson.DbString(request.TemplateId ?? request.TemplateIdSnake));
-        command.Parameters.AddWithValue("name", (request.Name ?? request.NameAlias ?? string.Empty).Trim());
-        command.Parameters.AddWithValue("itemType", (request.ItemType ?? request.ItemTypeSnake ?? string.Empty).Trim());
+        command.Parameters.AddWithValue("name", (request.ResolvedName ?? string.Empty).Trim());
+        command.Parameters.AddWithValue("itemType", (request.ResolvedItemType ?? string.Empty).Trim());
         command.Parameters.AddWithValue("subtype", RpgDbJson.DbString(request.Subtype ?? request.SubtypeAlias));
         command.Parameters.AddWithValue("description", RpgDbJson.DbString(request.Description ?? request.DescriptionAlias));
-        command.Parameters.AddWithValue("quantity", Math.Max(0, request.Quantity));
+        command.Parameters.AddWithValue("quantity", Math.Max(0, request.ResolvedQuantity));
         command.Parameters.AddWithValue("stackable", request.Stackable || request.StackableAlias);
-        command.Parameters.AddWithValue("weightEach", Math.Max(0, request.WeightEach != 0 ? request.WeightEach : request.WeightEachSnake));
+        command.Parameters.AddWithValue("weightEach", Math.Max(0, request.ResolvedWeightEach));
         command.Parameters.AddWithValue("condition", string.IsNullOrWhiteSpace(request.Condition ?? request.ConditionAlias) ? "normal" : (request.Condition ?? request.ConditionAlias)!.Trim());
         command.Parameters.AddWithValue("rarity", string.IsNullOrWhiteSpace(request.Rarity ?? request.RarityAlias) ? "common" : (request.Rarity ?? request.RarityAlias)!.Trim());
         command.Parameters.AddWithValue("isMagical", request.IsMagical || request.IsMagicalSnake);
@@ -1258,7 +1590,7 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         command.Parameters.AddWithValue("priceSilver", Math.Max(0, request.PriceSilver != 0 ? request.PriceSilver : request.PriceSilverSnake));
         command.Parameters.AddWithValue("priceGold", Math.Max(0, request.PriceGold != 0 ? request.PriceGold : request.PriceGoldSnake));
         command.Parameters.AddWithValue("pricePlatinum", Math.Max(0, request.PricePlatinum != 0 ? request.PricePlatinum : request.PricePlatinumSnake));
-        command.Parameters.AddWithValue("tags", JsonOrDefault(request.Tags, "[]"));
+        command.Parameters.AddWithValue("tags", ResolveInventoryTagsJson(request));
     }
 
     private static void AddAttackParameters(NpgsqlCommand command, Guid gameStateId, Guid characterId, AttackRequest request)
@@ -1310,8 +1642,12 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
 
     private static void ValidateInventoryItem(InventoryItemRequest request)
     {
-        ValidateRequired(request.Name ?? request.NameAlias, "название предмета обязательно.");
-        ValidateRequired(request.ItemType ?? request.ItemTypeSnake, "тип предмета обязателен.");
+        ValidateRequired(request.ResolvedName, "название предмета обязательно.");
+        ValidateRequired(request.ResolvedItemType, "тип предмета обязателен.");
+        if (request.ResolvedQuantity < 1)
+        {
+            throw new RpgValidationException("количество предмета должно быть не меньше 1.");
+        }
     }
 
     private static void ValidateAttack(AttackRequest request)
@@ -1340,4 +1676,6 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
             ? value.Value.GetRawText()
             : defaultJson;
     }
+
+    private readonly record struct InventoryItemRow(string ItemType, int Quantity, JsonElement Tags);
 }
