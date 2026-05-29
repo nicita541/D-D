@@ -243,7 +243,7 @@ public sealed class CombatRepository : ICombatRepository
             ?? throw new InvalidOperationException("Combat participant id was not returned."));
     }
 
-    private static string NormalizeActorType(string? actorType)
+    internal static string NormalizeActorType(string? actorType)
     {
         var normalized = string.IsNullOrWhiteSpace(actorType)
             ? "character"
@@ -254,7 +254,7 @@ public sealed class CombatRepository : ICombatRepository
             throw new CombatValidationException("типАктера должен быть character, npc или monster.");
         }
 
-        if (normalized == "monster")
+        if (false && normalized == "monster")
         {
             throw new CombatValidationException("типАктера monster пока не поддерживается: нет таблицы monsters/enemies.");
         }
@@ -289,6 +289,12 @@ public sealed class CombatRepository : ICombatRepository
                 WHERE id = @actorId
                   AND game_state_id = @gameStateId
             )
+            WHEN @actorType = 'monster' THEN EXISTS (
+                SELECT 1
+                FROM game.monsters
+                WHERE id = @actorId
+                  AND game_state_id = @gameStateId
+            )
             ELSE false
         END;
     """;
@@ -302,6 +308,11 @@ public sealed class CombatRepository : ICombatRepository
         if (exists is true)
         {
             return;
+        }
+
+        if (actorType == "monster")
+        {
+            throw new CombatValidationException("Monster combat participant was not found in this GameState.");
         }
 
         var message = actorType == "character"

@@ -1,5 +1,6 @@
 using backend.Infrastructure.Database;
 using backend.Infrastructure.DependencyInjection;
+using backend.Infrastructure.Ai;
 using backend.Infrastructure.Auth;
 using backend.Repositories.Auth;
 using backend.Services.Auth;
@@ -19,6 +20,7 @@ namespace backend
             builder.Services.AddControllers();
             builder.Services.AddHttpContextAccessor();
             builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+            builder.Services.Configure<AiMasterOptions>(builder.Configuration.GetSection(AiMasterOptions.SectionName));
 
             var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
                 ?? throw new InvalidOperationException("Jwt options are not configured.");
@@ -81,6 +83,7 @@ namespace backend
             builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
             // RPG modules
+            builder.Services.AddHttpClient<IOllamaClient, OllamaClient>();
             builder.Services.AddRpgFeatureServices();
 
             var app = builder.Build();
