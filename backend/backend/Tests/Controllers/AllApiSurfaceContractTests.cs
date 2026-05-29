@@ -233,7 +233,6 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/turns",
             "GET api/game-states/{gameStateId:guid}/turns/{turnId:guid}",
 
-            "GET api/game-states/{gameStateId:guid}/world",
             "POST api/game-states/{gameStateId:guid}/world/locations",
             "POST api/game-states/{gameStateId:guid}/world/objects",
             "POST api/game-states/{gameStateId:guid}/world/containers",
@@ -480,3 +479,4 @@ public sealed class AllApiSurfaceContractTests
         string FullRoute,
         IReadOnlyList<string> HttpMethods);
 }
+
