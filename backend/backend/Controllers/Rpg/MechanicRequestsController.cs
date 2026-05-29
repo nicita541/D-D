@@ -1,5 +1,5 @@
 using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Memory;
+using backend.Contracts.Rpg.Mechanics;
 using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
@@ -9,46 +9,45 @@ namespace backend.Controllers.Rpg;
 
 [Authorize]
 [ApiController]
-[Route("api/game-states/{gameStateId:guid}/memory")]
-public sealed class CampaignMemoryController : ControllerBase
+[Route("api/game-states/{gameStateId:guid}/mechanic-requests")]
+public sealed class MechanicRequestsController : ControllerBase
 {
-    private readonly ICampaignMemoryService _memory;
+    private readonly IMechanicRequestService _mechanicRequests;
     private readonly ICurrentUserService _currentUser;
 
-    public CampaignMemoryController(ICampaignMemoryService memory, ICurrentUserService currentUser)
+    public MechanicRequestsController(IMechanicRequestService mechanicRequests, ICurrentUserService currentUser)
     {
-        _memory = memory;
+        _mechanicRequests = mechanicRequests;
         _currentUser = currentUser;
     }
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> GetMemory(Guid gameStateId, CancellationToken cancellationToken)
+    public async Task<ActionResult> GetRequests(Guid gameStateId, [FromQuery] string? status, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        return ToActionResult(await _memory.GetMemoryAsync(current.AccountId, gameStateId, cancellationToken));
+        return ToActionResult(await _mechanicRequests.GetRequestsAsync(current.AccountId, gameStateId, status, cancellationToken));
     }
 
-    [HttpPut]
+    [HttpPost("{requestId:guid}/resolve/ability-check")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> UpdateMemory(Guid gameStateId, [FromBody] CampaignMemoryRequest? request, CancellationToken cancellationToken)
+    public async Task<ActionResult> ResolveAbilityCheck(
+        Guid gameStateId,
+        Guid requestId,
+        [FromBody] MechanicRequestResolveAbilityCheckRequest? request,
+        CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        return ToActionResult(await _memory.UpdateMemoryAsync(current.AccountId, gameStateId, request ?? new CampaignMemoryRequest(), cancellationToken));
-    }
-
-    [HttpPost("summarize")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult> SummarizeMemory(Guid gameStateId, [FromBody] CampaignMemorySummarizeRequest? request, CancellationToken cancellationToken)
-    {
-        var current = _currentUser.GetRequiredUser();
-        return ToActionResult(await _memory.SummarizeMemoryAsync(current.AccountId, gameStateId, request ?? new CampaignMemorySummarizeRequest(), cancellationToken));
+        return ToActionResult(await _mechanicRequests.ResolveAbilityCheckAsync(
+            current.AccountId,
+            gameStateId,
+            requestId,
+            request ?? new MechanicRequestResolveAbilityCheckRequest(),
+            cancellationToken));
     }
 
     private ActionResult ToActionResult<T>(RpgResult<T> result)

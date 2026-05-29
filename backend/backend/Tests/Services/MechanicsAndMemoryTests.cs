@@ -227,6 +227,12 @@ public sealed class MechanicsAndMemoryTests
         public Task<JsonElement?> UpdateMemoryAsync(Guid accountId, Guid gameStateId, CampaignMemoryRequest request, CancellationToken cancellationToken)
             => Task.FromResult<JsonElement?>(CreateMemory(request.ResolvedSummary ?? ""));
 
+        public Task<JsonElement?> ApplyMemoryPatchAsync(Guid accountId, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+            => Task.FromResult<JsonElement?>(CreateMemory("merged"));
+
+        public Task<IReadOnlyList<JsonElement>?> GetRecentLogEntriesAsync(Guid accountId, Guid gameStateId, int limit, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<JsonElement>?>(Array.Empty<JsonElement>());
+
         public Task EnsureMemoryAsync(Guid gameStateId, CancellationToken cancellationToken)
             => Task.CompletedTask;
 

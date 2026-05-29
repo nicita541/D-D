@@ -362,6 +362,7 @@ Character participant:
   "инициатива": 13,
   "хпТекущее": 12,
   "хпМаксимум": 12,
+  "классДоспеха": 14,
   "состояния": []
 }
 ```
@@ -376,13 +377,93 @@ Monster participant:
   "инициатива": 11,
   "хпТекущее": 9,
   "хпМаксимум": 9,
+  "классДоспеха": 12,
   "состояния": []
 }
 ```
 
 `GET /api/game-states/{gameStateId}/combat`
 
+`POST /api/game-states/{gameStateId}/combat/next-turn`
+
+Переключает активного участника по инициативе. Порядок: `инициатива desc`, затем `created_at asc`, затем `id asc`. При переходе с последнего участника на первого увеличивает `раунд`.
+
+`POST /api/game-states/{gameStateId}/combat/apply-damage`
+
+```json
+{
+  "цельУчастникId": "<participantId>",
+  "урон": 5,
+  "типУрона": "рубящий",
+  "причина": "Удар мечом"
+}
+```
+
+HP не уходит ниже 0. Если HP становится 0, backend добавляет состояние `"повержен"` без дублей.
+
+`POST /api/game-states/{gameStateId}/combat/participants/{participantId}/heal`
+
+```json
+{
+  "лечение": 4,
+  "причина": "Зелье лечения"
+}
+```
+
+Лечение не поднимает HP выше `хпМаксимум`. Состояние `"повержен"` автоматически не снимается.
+
+`POST /api/game-states/{gameStateId}/combat/attack`
+
+```json
+{
+  "атакующийУчастникId": "<participantId>",
+  "цельУчастникId": "<participantId>",
+  "бросокАтаки": "1d20+4",
+  "урон": "1d8+2",
+  "типУрона": "рубящий",
+  "причина": "Удар мечом"
+}
+```
+
+Backend бросает атаку, сравнивает total с `классДоспеха` цели, при попадании бросает урон и применяет его. Эти combat rolls пока возвращаются в response как ephemeral result и не пишутся в `game.dice_rolls`.
+
 `POST /api/game-states/{gameStateId}/combat/end`
+
+## XP / Level Up
+
+`POST /api/game-states/{gameStateId}/characters/{characterId}/experience`
+
+```json
+{
+  "опыт": 50,
+  "причина": "Победа над волком"
+}
+```
+
+Response:
+
+```json
+{
+  "characterId": "<characterId>",
+  "experience": 350,
+  "addedExperience": 50,
+  "reason": "Победа над волком",
+  "level": 1,
+  "experienceToNextLevel": 300,
+  "canLevelUp": true
+}
+```
+
+`POST /api/game-states/{gameStateId}/characters/{characterId}/level-up`
+
+```json
+{
+  "новыйУровень": 2,
+  "хпМаксимумДобавить": 7
+}
+```
+
+`новыйУровень` сейчас должен быть строго `current level + 1`. Backend обновляет `level`, `experienceToNextLevel`, `hp_max` и `hp_current`.
 
 ## Turns
 
@@ -457,6 +538,53 @@ Compatibility aliases: `summary`, `currentScene`, `importantFacts`, `openThreads
 
 Важно: `секретыМастера` backend возвращает для будущего GM mode, но обычный player UI не должен показывать это поле игроку.
 
+`POST /api/game-states/{gameStateId}/memory/summarize`
+
+```json
+{
+  "последниеЗаписи": 20
+}
+```
+
+Backend берёт последние записи `game_log_entries`, вызывает Ollama строгим JSON-only prompt, валидирует patch памяти и применяет его тем же merge-алгоритмом, что `обновить_память`. Если журнал пустой, вернёт `400`. Если AI вернул невалидный JSON, вернёт `503` без частичного изменения памяти.
+
+## Mechanic Requests
+
+`GET /api/game-states/{gameStateId}/mechanic-requests?status=pending`
+
+Response item:
+
+```json
+{
+  "id": "<requestId>",
+  "gameStateId": "<gameStateId>",
+  "turnId": "<turnId>",
+  "changeId": "<changeId>",
+  "requestType": "ability_check",
+  "payload": {
+    "тип": "ability_check",
+    "персонажId": null,
+    "характеристика": "ловкость",
+    "сложность": 14,
+    "причина": "Перепрыгнуть через провал"
+  },
+  "status": "pending",
+  "result": {},
+  "createdAt": "2026-05-29T12:00:00Z",
+  "resolvedAt": null
+}
+```
+
+`POST /api/game-states/{gameStateId}/mechanic-requests/{requestId}/resolve/ability-check`
+
+```json
+{
+  "персонажId": "<characterId>"
+}
+```
+
+Если `персонажId` не передан в body, backend попытается взять его из payload request. Если его всё равно нет, вернёт `400`.
+
 ## Pending Changes
 
 `GET /api/game-states/{gameStateId}/changes?status=pending`
@@ -475,7 +603,7 @@ Reject body:
 
 Поддержанные operations в AI response: `добавить_предмет`, `изменить_хп`, `изменить_ресурс`, `добавить_состояние`, `удалить_состояние`, `обновить_квест`, `добавить_запись_журнала`, `переместить_предмет`, `запросить_бросок`, `обновить_память`.
 
-Новые operations этого slice:
+Новые mechanics/memory operations:
 
 ```json
 {
@@ -506,7 +634,7 @@ Reject body:
 }
 ```
 
-В этом slice backend только разрешает эти operations в AI response и документации. `apply` для `запросить_бросок`/`обновить_память`, mechanic request resolve, combat engine, XP/level-up и AI memory summarization пока не реализованы.
+`apply` для `запросить_бросок` создаёт `game.mechanic_requests` со status `pending`. `apply` для `обновить_память` обновляет `campaign_memories`: summary append, shallow merge `текущаяСцена`, append/dedup массивов по `name` / `название` / `title` или raw JSON.
 
 ## Full MVP Scenario
 
@@ -521,9 +649,12 @@ Reject body:
 9. `POST /api/game-states/{gameStateId}/combat/start` начать бой.
 10. `POST /api/game-states/{gameStateId}/combat/participants` добавить character participant.
 11. `POST /api/game-states/{gameStateId}/combat/participants` добавить monster participant.
-12. `POST /api/game-states/{gameStateId}/turns` отправить сообщение игрока.
-13. `GET /api/game-states/{gameStateId}/changes?status=pending` увидеть предложенные изменения.
-14. `POST /api/game-states/{gameStateId}/changes/{changeId}/apply` применить изменение или `/reject` отклонить.
+12. `POST /api/game-states/{gameStateId}/combat/next-turn` выставить активного участника.
+13. `POST /api/game-states/{gameStateId}/combat/attack` провести простую атаку.
+14. `POST /api/game-states/{gameStateId}/characters/{characterId}/experience` начислить XP при необходимости.
+15. `POST /api/game-states/{gameStateId}/turns` отправить сообщение игрока.
+16. `GET /api/game-states/{gameStateId}/changes?status=pending` увидеть предложенные изменения.
+17. `POST /api/game-states/{gameStateId}/changes/{changeId}/apply` применить изменение или `/reject` отклонить.
 
 ## Mechanics / Memory Flow
 
@@ -531,16 +662,20 @@ Reject body:
 
 1. Frontend отправляет `POST /turns`.
 2. AI может вернуть pending change `operation = "запросить_бросок"`.
-3. В этом slice frontend может показать игроку требуемый бросок из payload.
-4. Фактический бросок выполняется через `POST /rolls` или `POST /checks/ability`.
-5. Результат броска можно отправить следующим `POST /turns` в тексте сообщения игрока.
+3. Frontend применяет change через `POST /changes/{changeId}/apply`.
+4. Backend создаёт `mechanic_request`.
+5. Frontend показывает игроку требуемый бросок.
+6. Frontend вызывает `POST /mechanic-requests/{requestId}/resolve/ability-check`.
+7. Результат проверки можно отправить следующим `POST /turns` в тексте сообщения игрока.
 
 Долгая память кампании:
 
 1. Frontend может читать память через `GET /memory`.
 2. Frontend или GM-инструмент может обновлять память через `PUT /memory`.
 3. AI context следующего хода включает `памятьКампании`.
-4. AI может предложить `operation = "обновить_память"`, но apply для этой operation будет добавлен отдельным этапом.
+4. AI может предложить `operation = "обновить_память"`.
+5. Frontend применяет change через `POST /changes/{changeId}/apply`.
+6. Следующий AI context содержит обновлённую память.
 
 ## Health
 

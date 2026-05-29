@@ -77,3 +77,15 @@ public sealed class CampaignMemoryRequest
     [JsonIgnore]
     public JsonElement? ResolvedMasterSecrets => MasterSecretsRu ?? MasterSecrets;
 }
+
+public sealed class CampaignMemorySummarizeRequest
+{
+    [JsonPropertyName("последниеЗаписи")]
+    public int? RecentEntriesRu { get; set; }
+
+    [JsonPropertyName("recentEntries")]
+    public int? RecentEntries { get; set; }
+
+    [JsonIgnore]
+    public int ResolvedRecentEntries => RecentEntriesRu ?? RecentEntries ?? 20;
+}

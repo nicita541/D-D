@@ -1,6 +1,7 @@
 using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Infrastructure.Database;
+using backend.Services.Rpg;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -90,7 +91,16 @@ public sealed class GameChangeRepository : IGameChangeRepository
                 return null;
             }
 
-            var result = await ApplyOperationAsync(connection, transaction, gameStateId, change.Value.Operation, change.Value.Payload, cancellationToken);
+            var result = await ApplyOperationAsync(
+                connection,
+                transaction,
+                accountId,
+                gameStateId,
+                changeId,
+                change.Value.GameTurnId,
+                change.Value.Operation,
+                change.Value.Payload,
+                cancellationToken);
             await MarkAppliedAsync(connection, transaction, accountId, gameStateId, changeId, result, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -151,7 +161,10 @@ public sealed class GameChangeRepository : IGameChangeRepository
     private static async Task<JsonElement> ApplyOperationAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
+        Guid accountId,
         Guid gameStateId,
+        Guid changeId,
+        Guid? gameTurnId,
         string operation,
         JsonElement payload,
         CancellationToken cancellationToken)
@@ -166,8 +179,149 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "обновить_квест" => await UpdateQuestAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "добавить_запись_журнала" => await AddLogEntryAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "переместить_предмет" => await MoveItemAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "запросить_бросок" => await RequestRollAsync(connection, transaction, accountId, gameStateId, changeId, gameTurnId, payload, cancellationToken),
+            "обновить_память" => await UpdateMemoryAsync(connection, transaction, gameStateId, payload, cancellationToken),
             _ => throw new RpgValidationException($"Unsupported change operation: {operation}.")
         };
+    }
+
+    private static async Task<JsonElement> RequestRollAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        Guid changeId,
+        Guid? gameTurnId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var requestType = GetOptionalString(payload, "тип", "type") ?? "ability_check";
+        if (!string.Equals(requestType, "ability_check", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RpgValidationException("запросить_бросок сейчас поддерживает только тип ability_check.");
+        }
+
+        var ability = AbilityRules.NormalizeAbility(GetRequiredString(payload, "характеристика", "ability"));
+        var difficultyClass = GetOptionalInt(payload, "сложность", "difficultyClass")
+            ?? throw new RpgValidationException("сложность обязательна для запроса броска.");
+        if (difficultyClass < 1)
+        {
+            throw new RpgValidationException("сложность должна быть больше 0.");
+        }
+
+        var characterId = GetOptionalGuid(payload, "персонажId", "characterId", "character_id");
+        if (characterId.HasValue)
+        {
+            await ValidateCharacterAsync(connection, transaction, gameStateId, characterId.Value, cancellationToken);
+        }
+
+        var reason = GetOptionalString(payload, "причина", "reason") ?? string.Empty;
+        var normalizedPayload = JsonSerializer.SerializeToElement(new
+        {
+            тип = "ability_check",
+            type = "ability_check",
+            персонажId = characterId,
+            characterId,
+            характеристика = ability,
+            ability,
+            сложность = difficultyClass,
+            difficultyClass,
+            причина = reason,
+            reason
+        });
+
+        const string sql = """
+            INSERT INTO game.mechanic_requests
+            (
+                game_state_id,
+                account_id,
+                game_turn_id,
+                game_change_id,
+                request_type,
+                payload,
+                status
+            )
+            VALUES
+            (
+                @gameStateId,
+                @accountId,
+                @gameTurnId,
+                @changeId,
+                'ability_check',
+                @payload,
+                'pending'
+            )
+            RETURNING id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("gameTurnId", gameTurnId.HasValue ? gameTurnId.Value : DBNull.Value);
+        command.Parameters.AddWithValue("changeId", changeId);
+        AddJsonb(command, "payload", normalizedPayload.GetRawText());
+        var requestId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Mechanic request id was not returned."));
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "запросить_бросок",
+            mechanicRequestId = requestId,
+            requestType = "ability_check",
+            status = "pending"
+        });
+    }
+
+    private static async Task<JsonElement> UpdateMemoryAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        await using (var ensure = new NpgsqlCommand(
+            "INSERT INTO game.campaign_memories (game_state_id) VALUES (@gameStateId) ON CONFLICT (game_state_id) DO NOTHING;",
+            connection,
+            transaction))
+        {
+            ensure.Parameters.AddWithValue("gameStateId", gameStateId);
+            await ensure.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var current = await SelectMemoryForUpdateAsync(connection, transaction, gameStateId, cancellationToken);
+        var merged = CampaignMemoryMergeHelper.Merge(current, payload);
+
+        const string sql = """
+            UPDATE game.campaign_memories
+            SET summary = @summary,
+                current_scene = @currentScene,
+                important_facts = @importantFacts,
+                open_threads = @openThreads,
+                resolved_threads = @resolvedThreads,
+                known_npcs = @knownNpcs,
+                known_locations = @knownLocations,
+                master_secrets = @masterSecrets,
+                updated_at = now()
+            WHERE game_state_id = @gameStateId;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("summary", merged.Summary);
+        AddJsonb(command, "currentScene", merged.CurrentScene.GetRawText());
+        AddJsonb(command, "importantFacts", merged.ImportantFacts.GetRawText());
+        AddJsonb(command, "openThreads", merged.OpenThreads.GetRawText());
+        AddJsonb(command, "resolvedThreads", merged.ResolvedThreads.GetRawText());
+        AddJsonb(command, "knownNpcs", merged.KnownNpcs.GetRawText());
+        AddJsonb(command, "knownLocations", merged.KnownLocations.GetRawText());
+        AddJsonb(command, "masterSecrets", merged.MasterSecrets.GetRawText());
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "обновить_память",
+            updated = merged.UpdatedFields
+        });
     }
 
     private static async Task<JsonElement> AddItemAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -604,7 +758,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         CancellationToken cancellationToken)
     {
         const string sql = """
-            SELECT c.operation, c.payload::text
+            SELECT c.operation, c.payload::text, c.game_turn_id
             FROM game.game_changes c
             JOIN game.game_states gs ON gs.id = c.game_state_id
             WHERE gs.account_id = @accountId
@@ -624,7 +778,45 @@ public sealed class GameChangeRepository : IGameChangeRepository
             return null;
         }
 
-        return new PendingChange(reader.GetString(0), RpgDbJson.ParseElement(reader.GetString(1)));
+        return new PendingChange(
+            reader.GetString(0),
+            RpgDbJson.ParseElement(reader.GetString(1)),
+            reader.IsDBNull(2) ? null : reader.GetGuid(2));
+    }
+
+    private static async Task<JsonElement> SelectMemoryForUpdateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT jsonb_build_object(
+                'gameStateId', cm.game_state_id,
+                'резюме', cm.summary,
+                'текущаяСцена', cm.current_scene,
+                'важныеФакты', cm.important_facts,
+                'открытыеЛинии', cm.open_threads,
+                'закрытыеЛинии', cm.resolved_threads,
+                'известныеNpc', cm.known_npcs,
+                'известныеЛокации', cm.known_locations,
+                'секретыМастера', cm.master_secrets,
+                'updatedAt', cm.updated_at
+            )::text
+            FROM game.campaign_memories cm
+            WHERE cm.game_state_id = @gameStateId
+            FOR UPDATE;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null or DBNull)
+        {
+            throw new RpgValidationException("Память кампании не найдена.");
+        }
+
+        return RpgDbJson.ParseElement(value.ToString()!);
     }
 
     private static async Task<JsonElement?> GetChangeAsync(NpgsqlConnection connection, Guid accountId, Guid gameStateId, Guid changeId, CancellationToken cancellationToken)
@@ -824,5 +1016,5 @@ public sealed class GameChangeRepository : IGameChangeRepository
         parameter.Value = json;
     }
 
-    private readonly record struct PendingChange(string Operation, JsonElement Payload);
+    private readonly record struct PendingChange(string Operation, JsonElement Payload, Guid? GameTurnId);
 }

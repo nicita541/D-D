@@ -86,7 +86,9 @@ public sealed class RpgControllerTests
             typeof(WorldController),
             typeof(RollsController),
             typeof(ChecksController),
-            typeof(CampaignMemoryController)
+            typeof(CampaignMemoryController),
+            typeof(MechanicRequestsController),
+            typeof(CharacterProgressionController)
         };
 
         foreach (var controller in protectedControllers)
