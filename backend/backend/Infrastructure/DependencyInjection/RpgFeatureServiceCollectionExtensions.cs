@@ -9,19 +9,28 @@ public static class RpgFeatureServiceCollectionExtensions
     {
         services.AddScoped<IGameStateRepository, GameStateRepository>();
         services.AddScoped<ICharacterRepository, CharacterRepository>();
+        services.AddScoped<ICharacterDomainRepository, CharacterDomainRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IStoryRepository, StoryRepository>();
         services.AddScoped<IPartyRepository, PartyRepository>();
         services.AddScoped<ICombatRepository, CombatRepository>();
         services.AddScoped<IAiMasterContextRepository, AiMasterContextRepository>();
+        services.AddScoped<ITurnRepository, TurnRepository>();
+        services.AddScoped<IGameChangeRepository, GameChangeRepository>();
+        services.AddScoped<IWorldRepository, WorldRepository>();
 
         services.AddScoped<IGameStateService, GameStateService>();
         services.AddScoped<ICharacterService, CharacterService>();
+        services.AddScoped<ICharacterDomainService, CharacterDomainService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IStoryService, StoryService>();
         services.AddScoped<IPartyService, PartyService>();
         services.AddScoped<ICombatService, CombatService>();
         services.AddScoped<IAiMasterContextService, AiMasterContextService>();
+        services.AddScoped<ITurnService, TurnService>();
+        services.AddScoped<IGameChangeService, GameChangeService>();
+        services.AddScoped<IWorldService, WorldService>();
+        services.AddScoped<IPromptBuilder, PromptBuilder>();
 
         return services;
     }

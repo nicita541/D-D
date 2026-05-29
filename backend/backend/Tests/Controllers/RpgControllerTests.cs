@@ -7,6 +7,7 @@ using backend.Contracts.Rpg.Characters;
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.GameStates;
 using backend.Infrastructure.Auth;
+using backend.Repositories.Rpg;
 using backend.Services.Auth;
 using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
@@ -78,7 +79,11 @@ public sealed class RpgControllerTests
             typeof(StoryController),
             typeof(PartyController),
             typeof(CombatController),
-            typeof(AiMasterContextController)
+            typeof(AiMasterContextController),
+            typeof(CharacterDomainController),
+            typeof(TurnsController),
+            typeof(GameChangesController),
+            typeof(WorldController)
         };
 
         foreach (var controller in protectedControllers)
@@ -112,6 +117,12 @@ public sealed class RpgControllerTests
 
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaigns));
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaign));
+    }
+
+    [Fact]
+    public void CombatRepository_NormalizesMonsterActorType()
+    {
+        Assert.Equal("monster", CombatRepository.NormalizeActorType(" Monster "));
     }
 
     private static void AssertActionHas<TAttribute>(string actionName)
