@@ -61,7 +61,10 @@ public sealed class MechanicRequestRepository : IMechanicRequestRepository
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("status", normalizedStatus is null ? DBNull.Value : normalizedStatus);
+
+        var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Text);
+        statusParameter.Value = normalizedStatus is null ? DBNull.Value : normalizedStatus;
+
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         var result = new List<JsonElement>();

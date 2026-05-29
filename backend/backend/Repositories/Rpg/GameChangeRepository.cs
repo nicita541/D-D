@@ -59,7 +59,10 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("status", string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim());
+
+        var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Text);
+        statusParameter.Value = string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim();
+
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         var result = new List<JsonElement>();
