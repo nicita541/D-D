@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using backend.Contracts.Rpg.Changes;
+using backend.Contracts.Rpg.Combat;
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Mechanics;
 using backend.Contracts.Rpg.Memory;
@@ -40,6 +41,9 @@ public sealed class PlayController : ControllerBase
     private readonly ICampaignMemoryService _memory;
     private readonly ICombatService _combat;
     private readonly IPlayBootstrapService _bootstrap;
+    private readonly IPlayStateService _playState;
+    private readonly IPlayOrchestratorService _orchestrator;
+    private readonly ITravelService _travel;
     private readonly ICurrentUserService _currentUser;
 
     public PlayController(
@@ -51,6 +55,9 @@ public sealed class PlayController : ControllerBase
         ICampaignMemoryService memory,
         ICombatService combat,
         IPlayBootstrapService bootstrap,
+        IPlayStateService playState,
+        IPlayOrchestratorService orchestrator,
+        ITravelService travel,
         ICurrentUserService currentUser)
     {
         _gameStates = gameStates;
@@ -61,6 +68,9 @@ public sealed class PlayController : ControllerBase
         _memory = memory;
         _combat = combat;
         _bootstrap = bootstrap;
+        _playState = playState;
+        _orchestrator = orchestrator;
+        _travel = travel;
         _currentUser = currentUser;
     }
 
@@ -70,42 +80,19 @@ public sealed class PlayController : ControllerBase
     public async Task<ActionResult> Status(Guid gameStateId, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
+        return ToActionResult(await _playState.BuildAsync(current.AccountId, gameStateId, new PlayStateBuildRequest(), cancellationToken));
+    }
 
-        var gameState = await _gameStates.GetGameStateAsync(current.AccountId, gameStateId, cancellationToken);
-        if (!gameState.HasValue)
-        {
-            return NotFound(new MessageResponse { Message = "GameState не найден." });
-        }
-
-        var characters = await _characters.GetCharactersAsync(current.AccountId, gameStateId, cancellationToken);
-        var turns = await _turns.GetTurnsAsync(current.AccountId, gameStateId, cancellationToken);
-        var pendingChanges = await _changes.GetChangesAsync(current.AccountId, gameStateId, "pending", cancellationToken);
-        var mechanicRequests = await _mechanicRequests.GetRequestsAsync(current.AccountId, gameStateId, "pending", cancellationToken);
-        var memory = await _memory.GetMemoryAsync(current.AccountId, gameStateId, cancellationToken);
-        var combat = await _combat.GetCombatStateAsync(current.AccountId, gameStateId, cancellationToken);
-
-        var memoryValue = memory.Status == RpgResultStatus.Ok
-            ? (JsonElement?)memory.Value
-            : null;
-
-        return Ok(new
-        {
-            gameState = gameState.Value,
-            characters,
-            recentTurns = turns.Status == RpgResultStatus.Ok
-                ? turns.Value
-                : Array.Empty<JsonElement>(),
-            pendingChanges = pendingChanges.Status == RpgResultStatus.Ok
-                ? pendingChanges.Value
-                : Array.Empty<JsonElement>(),
-            mechanicRequests = mechanicRequests.Status == RpgResultStatus.Ok
-                ? mechanicRequests.Value
-                : Array.Empty<JsonElement>(),
-            memory = memoryValue,
-            scene = PlaySceneExtractor.Extract(memoryValue),
-            combat,
-            generatedAt = DateTimeOffset.UtcNow
-        });
+    [HttpPost("act")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult> Act(Guid gameStateId, [FromBody] PlayActRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        return ToActionResult(await _orchestrator.ActAsync(current.AccountId, gameStateId, request ?? new PlayActRequest(), cancellationToken));
     }
 
     [HttpPost("start")]
@@ -176,6 +163,27 @@ public sealed class PlayController : ControllerBase
         return ToActionResult(result);
     }
 
+    [HttpPost("resolve-and-continue/{requestId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult> ResolveAndContinue(
+        Guid gameStateId,
+        Guid requestId,
+        [FromBody] PlayResolveAndContinueRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        return ToActionResult(await _orchestrator.ResolveAndContinueAsync(
+            current.AccountId,
+            gameStateId,
+            requestId,
+            request ?? new PlayResolveAndContinueRequest(),
+            cancellationToken));
+    }
+
     [HttpPost("continue")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -226,45 +234,142 @@ public sealed class PlayController : ControllerBase
     public async Task<ActionResult> ApplySafeChanges(Guid gameStateId, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        var pendingChanges = await _changes.GetChangesAsync(current.AccountId, gameStateId, "pending", cancellationToken);
-        if (pendingChanges.Status != RpgResultStatus.Ok)
+        return ToActionResult(await _orchestrator.ApplySafeChangesAsync(current.AccountId, gameStateId, cancellationToken));
+    }
+
+    [HttpPost("travel")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Travel(Guid gameStateId, [FromBody] PlayTravelRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var move = await _travel.MoveAsync(current.AccountId, gameStateId, request ?? new PlayTravelRequest(), cancellationToken);
+        if (move.Status != RpgResultStatus.Ok)
         {
-            return ToActionResult(pendingChanges);
+            return ToActionResult(move);
         }
 
-        var applied = new List<object>();
-        var skipped = new List<object>();
-        var failed = new List<object>();
+        return ToActionResult(await _playState.BuildAsync(
+            current.AccountId,
+            gameStateId,
+            new PlayStateBuildRequest(PreferredMode: "travel"),
+            cancellationToken));
+    }
 
-        foreach (var change in pendingChanges.Value ?? Array.Empty<JsonElement>())
+    [HttpPost("location/move")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<ActionResult> MoveLocation(Guid gameStateId, [FromBody] PlayTravelRequest? request, CancellationToken cancellationToken)
+        => Travel(gameStateId, request, cancellationToken);
+
+    [HttpPost("combat/start")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> StartPlayCombat(Guid gameStateId, [FromBody] PlayCombatStartRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var startRequest = new Contracts.Rpg.Combat.StartCombatRequest();
+        var participants = request?.ResolvedParticipants ?? Array.Empty<Contracts.Rpg.Combat.AddCombatParticipantRequest>();
+        if (participants.Count == 0)
         {
-            var changeId = GetOptionalGuid(change, "id");
-            var operation = GetOptionalString(change, "operation") ?? string.Empty;
-            if (!changeId.HasValue)
-            {
-                skipped.Add(new { id = (Guid?)null, operation, reason = "Change id отсутствует." });
-                continue;
-            }
-
-            var descriptor = GameChangeOperationPolicy.Describe(operation);
-            if (!descriptor.IsSafeAutoApply)
-            {
-                skipped.Add(new { id = changeId.Value, operation, reason = GetSkipReason(descriptor) });
-                continue;
-            }
-
-            var applyResult = await _changes.ApplyChangeAsync(current.AccountId, gameStateId, changeId.Value, cancellationToken);
-            if (applyResult.Status == RpgResultStatus.Ok)
-            {
-                applied.Add(new { id = changeId.Value, operation, result = applyResult.Value });
-            }
-            else
-            {
-                failed.Add(new { id = changeId.Value, operation, message = applyResult.Message ?? "Не удалось применить change." });
-            }
+            return BadRequest(new MessageResponse { Message = "Для play/combat/start передайте participants. Автодобавление партии будет включено только после безопасного маппинга персонажей." });
         }
 
-        return Ok(new { applied, skipped, failed });
+        startRequest.Participants.AddRange(participants);
+        try
+        {
+            var id = await _combat.StartCombatAsync(current.AccountId, gameStateId, startRequest, cancellationToken);
+            if (!id.HasValue)
+            {
+                return NotFound(new MessageResponse { Message = "GameState не найден." });
+            }
+
+            return ToActionResult(await _playState.BuildAsync(current.AccountId, gameStateId, new PlayStateBuildRequest(PreferredMode: "combat"), cancellationToken));
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
+
+    [HttpPost("combat/action")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> PlayCombatAction(Guid gameStateId, [FromBody] PlayCombatActionRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var action = request?.ResolvedAction ?? string.Empty;
+        if (!string.Equals(action, "attack", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new MessageResponse { Message = "В этом tranche play/combat/action поддерживает только action=attack." });
+        }
+
+        try
+        {
+            var result = await _combat.AttackAsync(current.AccountId, gameStateId, request?.Attack ?? new Contracts.Rpg.Combat.CombatAttackRequest(), cancellationToken);
+            if (!result.HasValue)
+            {
+                return NotFound(new MessageResponse { Message = "Участники боя не найдены." });
+            }
+
+            return ToActionResult(await _playState.BuildAsync(current.AccountId, gameStateId, new PlayStateBuildRequest(PreferredMode: "combat"), cancellationToken));
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
+
+    [HttpPost("combat/end")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> EndPlayCombat(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var ended = await _combat.EndCombatAsync(current.AccountId, gameStateId, cancellationToken);
+        if (!ended)
+        {
+            return NotFound(new MessageResponse { Message = "Активный бой не найден." });
+        }
+
+        return ToActionResult(await _playState.BuildAsync(current.AccountId, gameStateId, new PlayStateBuildRequest(), cancellationToken));
+    }
+
+    [HttpPost("combat/continue")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult> ContinuePlayCombat(Guid gameStateId, [FromBody] PlayContinueRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var message = BuildContinueMessage(request ?? new PlayContinueRequest());
+        var result = await _turns.CreateTurnAsync(
+            current.AccountId,
+            gameStateId,
+            new CreateTurnRequest { Message = $"Продолжи активный бой. {message}" },
+            cancellationToken);
+        if (result.Status != RpgResultStatus.Ok)
+        {
+            return ToActionResult(result);
+        }
+
+        var summary = await _orchestrator.ApplySafeChangesAsync(current.AccountId, gameStateId, cancellationToken);
+        if (summary.Status != RpgResultStatus.Ok)
+        {
+            return ToActionResult(summary);
+        }
+
+        return ToActionResult(await _playState.BuildAsync(
+            current.AccountId,
+            gameStateId,
+            new PlayStateBuildRequest(PreferredMode: "combat", MasterAnswer: GetOptionalString(result.Value, "masterAnswer"), ChangeSummary: summary.Value),
+            cancellationToken));
     }
 
     [HttpPost("summarize")]

@@ -203,15 +203,24 @@ $importantRoutes = @(
     "/api/game-states/{gameStateId}/ai-context",
 
 "/api/game-states/{gameStateId}/play/status",
+"/api/game-states/{gameStateId}/play/act",
 "/api/game-states/{gameStateId}/play/start",
 "/api/game-states/{gameStateId}/play/message",
 "/api/game-states/{gameStateId}/play/resolve-mechanic-request/{requestId}",
+"/api/game-states/{gameStateId}/play/resolve-and-continue/{requestId}",
 "/api/game-states/{gameStateId}/play/continue",
 "/api/game-states/{gameStateId}/play/apply-change/{changeId}",
 "/api/game-states/{gameStateId}/play/reject-change/{changeId}",
 "/api/game-states/{gameStateId}/play/apply-safe-changes",
+"/api/game-states/{gameStateId}/play/travel",
+"/api/game-states/{gameStateId}/play/location/move",
+"/api/game-states/{gameStateId}/play/combat/start",
+"/api/game-states/{gameStateId}/play/combat/action",
+"/api/game-states/{gameStateId}/play/combat/end",
+"/api/game-states/{gameStateId}/play/combat/continue",
 "/api/game-states/{gameStateId}/play/summarize",
 "/api/game-states/{gameStateId}/play/bootstrap",
+"/api/game-states/{gameStateId}/travel/options",
 
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory",
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items",
@@ -492,6 +501,17 @@ if ([string]::IsNullOrWhiteSpace($locationId)) {
 }
 
 Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/world/locations/$locationId" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET world location" | Out-Null
+Invoke-Api -Method "GET" -Path "/api/game-states/$gameStateId/travel/options" -Headers $authHeaders -ExpectedStatus @(200) -Name "GET travel options" | Out-Null
+Invoke-Api `
+    -Method "POST" `
+    -Path "/api/game-states/$gameStateId/play/travel" `
+    -Headers $authHeaders `
+    -ExpectedStatus @(200) `
+    -Name "POST play/travel direct" `
+    -Body @{
+        targetLocationId = $locationId
+        note = "Smoke test direct/manual travel."
+    } | Out-Null
 
 $worldObject = Invoke-Api `
     -Method "POST" `

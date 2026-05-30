@@ -6,6 +6,20 @@ public sealed class StartCombatRequest
 {
     [JsonPropertyName("участники")]
     public List<AddCombatParticipantRequest> Participants { get; set; } = new();
+
+    [JsonPropertyName("participants")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<AddCombatParticipantRequest>? ParticipantsAlias
+    {
+        get => null;
+        set
+        {
+            if (value is not null)
+            {
+                Participants = value;
+            }
+        }
+    }
 }
 
 public sealed class AddCombatParticipantRequest
@@ -13,23 +27,121 @@ public sealed class AddCombatParticipantRequest
     [JsonPropertyName("типАктера")]
     public string ActorType { get; set; } = "character";
 
+    [JsonPropertyName("actorType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ActorTypeAlias
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                ActorType = value;
+            }
+        }
+    }
+
     [JsonPropertyName("actorId")]
     public Guid ActorId { get; set; }
+
+    [JsonPropertyName("актерId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ActorIdRu
+    {
+        get => null;
+        set
+        {
+            if (value.HasValue)
+            {
+                ActorId = value.Value;
+            }
+        }
+    }
 
     [JsonPropertyName("имя")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? NameAlias
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                Name = value;
+            }
+        }
+    }
+
     [JsonPropertyName("инициатива")]
     public int Initiative { get; set; }
+
+    [JsonPropertyName("initiative")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? InitiativeAlias
+    {
+        get => null;
+        set
+        {
+            if (value.HasValue)
+            {
+                Initiative = value.Value;
+            }
+        }
+    }
 
     [JsonPropertyName("хпТекущее")]
     public int HpCurrent { get; set; }
 
+    [JsonPropertyName("hpCurrent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? HpCurrentAlias
+    {
+        get => null;
+        set
+        {
+            if (value.HasValue)
+            {
+                HpCurrent = value.Value;
+            }
+        }
+    }
+
     [JsonPropertyName("хпМаксимум")]
     public int HpMax { get; set; }
 
+    [JsonPropertyName("hpMax")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? HpMaxAlias
+    {
+        get => null;
+        set
+        {
+            if (value.HasValue)
+            {
+                HpMax = value.Value;
+            }
+        }
+    }
+
     [JsonPropertyName("состояния")]
     public List<string> Conditions { get; set; } = new();
+
+    [JsonPropertyName("conditions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ConditionsAlias
+    {
+        get => null;
+        set
+        {
+            if (value is not null)
+            {
+                Conditions = value;
+            }
+        }
+    }
 
     [JsonPropertyName("классДоспеха")]
     public int? ArmorClassRu { get; set; }
