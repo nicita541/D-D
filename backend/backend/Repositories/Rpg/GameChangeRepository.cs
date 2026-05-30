@@ -206,6 +206,12 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "update_npc" => await UpdateNpcAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "create_world_object" => await CreateWorldObjectAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "update_world_object" => await UpdateWorldObjectAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "move_party_to_location" => await MovePartyToLocationAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "set_current_location" => await MovePartyToLocationAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "open_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: false, cancellationToken),
+            "unlock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: false, cancellationToken),
+            "close_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
+            "lock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
             "добавить_предмет" => await AddItemAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "изменить_хп" => await ChangeHpAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "изменить_ресурс" => await ChangeResourceAsync(connection, transaction, gameStateId, payload, cancellationToken),
@@ -409,6 +415,76 @@ public sealed class GameChangeRepository : IGameChangeRepository
         });
 
         return UpdateMemoryAsync(connection, transaction, gameStateId, patch, cancellationToken);
+    }
+
+    private static async Task<JsonElement> MovePartyToLocationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var targetLocationId = GetRequiredGuid(payload, "targetLocationId", "locationId", "локацияId", "целеваяЛокацияId");
+        await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, targetLocationId, "Location was not found.", cancellationToken);
+
+        const string sql = """
+            UPDATE game.game_states
+            SET current_location_id = @targetLocationId,
+                updated_at = now()
+            WHERE id = @gameStateId;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("targetLocationId", targetLocationId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        await AddTravelLogAsync(connection, transaction, gameStateId, $"Game change moved party to location {targetLocationId}.", cancellationToken);
+        return JsonSerializer.SerializeToElement(new { operation = "move_party_to_location", targetLocationId });
+    }
+
+    private static async Task<JsonElement> SetLocationExitLockedAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        bool isLocked,
+        CancellationToken cancellationToken)
+    {
+        var exitId = GetRequiredGuid(payload, "exitId", "locationExitId", "выходId");
+        const string sql = """
+            UPDATE game.location_exits
+            SET is_locked = @isLocked
+            WHERE game_state_id = @gameStateId
+              AND id = @exitId;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("exitId", exitId);
+        command.Parameters.AddWithValue("isLocked", isLocked);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            throw new RpgValidationException("Location exit was not found.");
+        }
+
+        await AddTravelLogAsync(connection, transaction, gameStateId, isLocked ? $"Location exit {exitId} locked." : $"Location exit {exitId} unlocked.", cancellationToken);
+        return JsonSerializer.SerializeToElement(new { operation = isLocked ? "lock_location_exit" : "unlock_location_exit", exitId, isLocked });
+    }
+
+    private static async Task AddTravelLogAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, string text, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO game.game_log_entries (game_state_id, turn_number, type, text, important)
+            SELECT @gameStateId, COALESCE(gs.turn_number, 0), 'travel', @text, false
+            FROM game.game_states gs
+            WHERE gs.id = @gameStateId;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("text", text);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<JsonElement> CreateQuestAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)

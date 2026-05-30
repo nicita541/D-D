@@ -295,6 +295,7 @@ public sealed class CombatRepository : ICombatRepository
             SELECT jsonb_build_object(
                 'id', c.id,
                 'gameStateId', c.game_state_id,
+                'isActive', c.is_active,
                 'активен', c.is_active,
                 'раунд', c.round_number,
                 'текущийУчастникId', c.current_turn_participant_id,

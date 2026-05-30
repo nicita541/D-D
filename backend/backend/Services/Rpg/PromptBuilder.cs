@@ -20,6 +20,8 @@ public sealed class PromptBuilder : IPromptBuilder
         builder.AppendLine("operation должен быть строго одним из поддерживаемых значений. Предпочитай canonical English snake_case, русские aliases тоже принимаются backend:");
         builder.AppendLine("add_journal_entry, update_memory, update_scene, create_quest, update_quest, create_quest_step, complete_quest_step");
         builder.AppendLine("create_location, update_location, create_npc, update_npc, create_world_object, update_world_object, add_item, request_roll");
+        builder.AppendLine("Additional recognized operations for play-flow: move_party_to_location, set_current_location, open_location_exit, close_location_exit, lock_location_exit, unlock_location_exit, start_combat, end_combat, add_combat_participant, remove_combat_participant.");
+        builder.AppendLine("Do not propose dangerous operations unless the current scene clearly requires explicit player confirmation.");
         builder.AppendLine("Русские aliases: добавить_предмет, изменить_хп, изменить_ресурс, добавить_состояние, удалить_состояние, обновить_квест, добавить_запись_журнала, переместить_предмет, запросить_бросок, обновить_память, обновить_сцену.");
         builder.AppendLine("Используй запросить_бросок, когда действие игрока требует проверки и результат нельзя честно определить без кубика. После применения change backend создаст mechanic request для frontend.");
         builder.AppendLine("Используй обновить_память только для важных фактов, текущей сцены, NPC, локаций, открытых линий и секретов мастера. После применения change backend обновит память кампании. Не обновляй память из-за мелких событий.");
