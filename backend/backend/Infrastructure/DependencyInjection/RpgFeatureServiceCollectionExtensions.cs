@@ -18,6 +18,12 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddScoped<ITurnRepository, TurnRepository>();
         services.AddScoped<IGameChangeRepository, GameChangeRepository>();
         services.AddScoped<IWorldRepository, WorldRepository>();
+        services.AddScoped<IDiceRollRepository, DiceRollRepository>();
+        services.AddScoped<IAbilityCheckRepository, AbilityCheckRepository>();
+        services.AddScoped<ICampaignMemoryRepository, CampaignMemoryRepository>();
+        services.AddScoped<IMechanicRequestRepository, MechanicRequestRepository>();
+        services.AddScoped<ICharacterProgressionRepository, CharacterProgressionRepository>();
+        services.AddScoped<IPlayBootstrapRepository, PlayBootstrapRepository>();
 
         services.AddScoped<IGameStateService, GameStateService>();
         services.AddScoped<ICharacterService, CharacterService>();
@@ -30,7 +36,14 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddScoped<ITurnService, TurnService>();
         services.AddScoped<IGameChangeService, GameChangeService>();
         services.AddScoped<IWorldService, WorldService>();
+        services.AddScoped<IDiceRollService, DiceRollService>();
+        services.AddScoped<IAbilityCheckService, AbilityCheckService>();
+        services.AddScoped<ICampaignMemoryService, CampaignMemoryService>();
+        services.AddScoped<IMechanicRequestService, MechanicRequestService>();
+        services.AddScoped<ICharacterProgressionService, CharacterProgressionService>();
+        services.AddScoped<IPlayBootstrapService, PlayBootstrapService>();
         services.AddScoped<IPromptBuilder, PromptBuilder>();
+        services.AddSingleton<IDiceRoller, DiceRoller>();
 
         return services;
     }

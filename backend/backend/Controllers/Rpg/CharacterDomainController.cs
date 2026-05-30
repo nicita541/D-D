@@ -90,6 +90,10 @@ public sealed class CharacterDomainController : ControllerBase
     public async Task<ActionResult> CreateInventoryItem(Guid gameStateId, Guid characterId, [FromBody] InventoryItemRequest request, CancellationToken cancellationToken)
         => ToCreatedResult(await _domain.CreateInventoryItemAsync(AccountId(), gameStateId, characterId, request, cancellationToken), "Inventory item created.");
 
+    [HttpPost("inventory/items")]
+    public async Task<ActionResult> CreateInventoryItemAlias(Guid gameStateId, Guid characterId, [FromBody] InventoryItemRequest request, CancellationToken cancellationToken)
+        => ToCreatedResult(await _domain.CreateInventoryItemAsync(AccountId(), gameStateId, characterId, request, cancellationToken), "Inventory item created.");
+
     [HttpPut("inventory/{itemId:guid}")]
     public async Task<ActionResult> UpdateInventoryItem(Guid gameStateId, Guid characterId, Guid itemId, [FromBody] InventoryItemRequest request, CancellationToken cancellationToken)
         => ToOperationResult(await _domain.UpdateInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, request, cancellationToken), itemId, "Inventory item updated.");
@@ -97,6 +101,22 @@ public sealed class CharacterDomainController : ControllerBase
     [HttpDelete("inventory/{itemId:guid}")]
     public async Task<ActionResult> DeleteInventoryItem(Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
         => ToOperationResult(await _domain.DeleteInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, cancellationToken), itemId, "Inventory item deleted.");
+
+    [HttpDelete("inventory/items/{itemId:guid}")]
+    public async Task<ActionResult> DeleteInventoryItemAlias(Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => ToOperationResult(await _domain.DeleteInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, cancellationToken), itemId, "Inventory item deleted.");
+
+    [HttpPost("inventory/items/{itemId:guid}/equip")]
+    public async Task<ActionResult> EquipInventoryItem(Guid gameStateId, Guid characterId, Guid itemId, [FromBody] InventoryItemActionRequest? request, CancellationToken cancellationToken)
+        => ToOperationResult(await _domain.EquipInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, request ?? new InventoryItemActionRequest(), cancellationToken), itemId, "Inventory item equipped.");
+
+    [HttpPost("inventory/items/{itemId:guid}/unequip")]
+    public async Task<ActionResult> UnequipInventoryItem(Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => ToOperationResult(await _domain.UnequipInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, cancellationToken), itemId, "Inventory item unequipped.");
+
+    [HttpPost("inventory/items/{itemId:guid}/use")]
+    public async Task<ActionResult> UseInventoryItem(Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken)
+        => ToOperationResult(await _domain.UseInventoryItemAsync(AccountId(), gameStateId, characterId, itemId, cancellationToken), itemId, "Inventory item used.");
 
     [HttpGet("equipment")]
     public async Task<ActionResult> GetEquipment(Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
@@ -158,6 +178,7 @@ public sealed class CharacterDomainController : ControllerBase
             RpgResultStatus.Ok => Ok(result.Value),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
+            RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
             RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "Service unavailable." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
@@ -168,6 +189,7 @@ public sealed class CharacterDomainController : ControllerBase
             RpgResultStatus.Ok => StatusCode(StatusCodes.Status201Created, new OperationResponse { Id = result.Value, Message = message }),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
+            RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 
@@ -177,6 +199,7 @@ public sealed class CharacterDomainController : ControllerBase
             RpgResultStatus.Ok => Ok(new OperationResponse { Id = id, Message = message }),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Bad request." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Not found." }),
+            RpgResultStatus.Conflict => Conflict(new MessageResponse { Message = result.Message ?? "Conflict." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 }

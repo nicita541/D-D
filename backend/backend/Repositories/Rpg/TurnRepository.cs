@@ -15,31 +15,63 @@ public sealed class TurnRepository : ITurnRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<PendingTurn?> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken)
+    public async Task<PendingTurnCreationResult> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            const string nextTurnSql = """
-                SELECT turn_number + 1
+            const string lockGameStateSql = """
+                SELECT turn_number
                 FROM game.game_states
                 WHERE id = @gameStateId
                   AND account_id = @accountId
                 FOR UPDATE;
             """;
 
-            await using var nextTurnCommand = new NpgsqlCommand(nextTurnSql, connection, transaction);
-            nextTurnCommand.Parameters.AddWithValue("accountId", accountId);
-            nextTurnCommand.Parameters.AddWithValue("gameStateId", gameStateId);
-            var nextTurnValue = await nextTurnCommand.ExecuteScalarAsync(cancellationToken);
-            if (nextTurnValue is null or DBNull)
+            await using var lockGameStateCommand = new NpgsqlCommand(lockGameStateSql, connection, transaction);
+            lockGameStateCommand.Parameters.AddWithValue("accountId", accountId);
+            lockGameStateCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+            var currentTurnValue = await lockGameStateCommand.ExecuteScalarAsync(cancellationToken);
+            if (currentTurnValue is null or DBNull)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return null;
+                return PendingTurnCreationResult.NotFound();
             }
 
+            const string activeTurnSql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM game.game_turns
+                    WHERE game_state_id = @gameStateId
+                      AND account_id = @accountId
+                      AND status IN ('pending', 'processing', 'running')
+                );
+            """;
+
+            await using (var activeTurnCommand = new NpgsqlCommand(activeTurnSql, connection, transaction))
+            {
+                activeTurnCommand.Parameters.AddWithValue("accountId", accountId);
+                activeTurnCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+                if (await activeTurnCommand.ExecuteScalarAsync(cancellationToken) is true)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return PendingTurnCreationResult.Conflict();
+                }
+            }
+
+            const string nextTurnSql = """
+                SELECT GREATEST(@currentTurnNumber, COALESCE(MAX(turn_number), 0)) + 1
+                FROM game.game_turns
+                WHERE game_state_id = @gameStateId;
+            """;
+
+            await using var nextTurnCommand = new NpgsqlCommand(nextTurnSql, connection, transaction);
+            nextTurnCommand.Parameters.AddWithValue("currentTurnNumber", Convert.ToInt32(currentTurnValue));
+            nextTurnCommand.Parameters.AddWithValue("gameStateId", gameStateId);
+            var nextTurnValue = await nextTurnCommand.ExecuteScalarAsync(cancellationToken)
+                ?? throw new InvalidOperationException("Next turn number was not returned.");
             var turnNumber = Convert.ToInt32(nextTurnValue);
 
             const string insertSql = """
@@ -74,7 +106,7 @@ public sealed class TurnRepository : ITurnRepository
                 ?? throw new InvalidOperationException("Turn id was not returned."));
 
             await transaction.CommitAsync(cancellationToken);
-            return new PendingTurn(turnId, gameStateId, accountId, turnNumber, playerMessage);
+            return PendingTurnCreationResult.Created(new PendingTurn(turnId, gameStateId, accountId, turnNumber, playerMessage));
         }
         catch
         {
@@ -181,7 +213,6 @@ public sealed class TurnRepository : ITurnRepository
                 }
             }
 
-            await UpdateGameStateTurnNumberAsync(connection, transaction, turn, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         catch

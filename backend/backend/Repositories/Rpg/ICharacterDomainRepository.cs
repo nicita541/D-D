@@ -28,6 +28,9 @@ public interface ICharacterDomainRepository
     Task<Guid?> CreateInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, InventoryItemRequest request, CancellationToken cancellationToken);
     Task<bool?> UpdateInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, InventoryItemRequest request, CancellationToken cancellationToken);
     Task<bool?> DeleteInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken);
+    Task<bool?> EquipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, string? slot, CancellationToken cancellationToken);
+    Task<bool?> UnequipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken);
+    Task<bool?> UseInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken);
 
     Task<JsonElement?> GetEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken);
     Task<bool?> UpdateEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, EquipmentRequest request, CancellationToken cancellationToken);

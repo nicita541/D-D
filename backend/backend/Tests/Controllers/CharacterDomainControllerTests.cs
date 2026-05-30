@@ -90,6 +90,9 @@ public sealed class CharacterDomainControllerTests
         public Task<RpgResult<Guid>> CreateInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, InventoryItemRequest request, CancellationToken cancellationToken) => Task.FromResult(GuidResult);
         public Task<RpgResult<bool>> UpdateInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, InventoryItemRequest request, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
         public Task<RpgResult<bool>> DeleteInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
+        public Task<RpgResult<bool>> EquipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, InventoryItemActionRequest request, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
+        public Task<RpgResult<bool>> UnequipInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
+        public Task<RpgResult<bool>> UseInventoryItemAsync(Guid accountId, Guid gameStateId, Guid characterId, Guid itemId, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
         public Task<RpgResult<JsonElement>> GetEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken) => Task.FromResult(JsonResult);
         public Task<RpgResult<bool>> UpdateEquipmentAsync(Guid accountId, Guid gameStateId, Guid characterId, EquipmentRequest request, CancellationToken cancellationToken) => Task.FromResult(BoolResult);
         public Task<RpgResult<IReadOnlyList<JsonElement>>> GetAttacksAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken) => Task.FromResult(ListResult);

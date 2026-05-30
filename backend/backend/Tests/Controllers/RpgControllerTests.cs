@@ -83,7 +83,12 @@ public sealed class RpgControllerTests
             typeof(CharacterDomainController),
             typeof(TurnsController),
             typeof(GameChangesController),
-            typeof(WorldController)
+            typeof(WorldController),
+            typeof(RollsController),
+            typeof(ChecksController),
+            typeof(CampaignMemoryController),
+            typeof(MechanicRequestsController),
+            typeof(CharacterProgressionController)
         };
 
         foreach (var controller in protectedControllers)
@@ -117,6 +122,22 @@ public sealed class RpgControllerTests
 
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaigns));
         AssertActionDoesNotHave<AuthorizeAttribute>(nameof(CampaignsController.GetCampaign));
+    }
+
+    [Fact]
+    public void HealthController_IsPublic()
+    {
+        Assert.NotNull(typeof(HealthController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
+    [Fact]
+    public void HealthController_GetHealth_ReturnsOk()
+    {
+        var controller = new HealthController(null!);
+
+        var result = controller.GetHealth();
+
+        Assert.IsType<OkObjectResult>(result);
     }
 
     [Fact]

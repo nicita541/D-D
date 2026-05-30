@@ -84,4 +84,80 @@ public sealed class CombatController : ControllerBase
             return BadRequest(new MessageResponse { Message = ex.Message });
         }
     }
+
+    [HttpPost("next-turn")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> NextTurn(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+
+        try
+        {
+            var combat = await _combat.NextTurnAsync(current.AccountId, gameStateId, cancellationToken);
+            return combat.HasValue ? Ok(combat.Value) : NotFound(new MessageResponse { Message = "Активный бой не найден" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
+
+    [HttpPost("apply-damage")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> ApplyDamage(Guid gameStateId, [FromBody] ApplyCombatDamageRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+
+        try
+        {
+            var combat = await _combat.ApplyDamageAsync(current.AccountId, gameStateId, request ?? new ApplyCombatDamageRequest(), cancellationToken);
+            return combat.HasValue ? Ok(combat.Value) : NotFound(new MessageResponse { Message = "Участник боя не найден" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
+
+    [HttpPost("participants/{participantId:guid}/heal")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> HealParticipant(Guid gameStateId, Guid participantId, [FromBody] HealCombatParticipantRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+
+        try
+        {
+            var combat = await _combat.HealParticipantAsync(current.AccountId, gameStateId, participantId, request ?? new HealCombatParticipantRequest(), cancellationToken);
+            return combat.HasValue ? Ok(combat.Value) : NotFound(new MessageResponse { Message = "Участник боя не найден" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
+
+    [HttpPost("attack")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Attack(Guid gameStateId, [FromBody] CombatAttackRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+
+        try
+        {
+            var result = await _combat.AttackAsync(current.AccountId, gameStateId, request ?? new CombatAttackRequest(), cancellationToken);
+            return result.HasValue ? Ok(result.Value) : NotFound(new MessageResponse { Message = "Участники боя не найдены" });
+        }
+        catch (CombatValidationException ex)
+        {
+            return BadRequest(new MessageResponse { Message = ex.Message });
+        }
+    }
 }
