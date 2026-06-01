@@ -1,6 +1,7 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Infrastructure.Database;
+using backend.Modules.Changes;
 using backend.Services.Rpg;
 using Npgsql;
 using NpgsqlTypes;
@@ -17,10 +18,12 @@ public sealed class GameChangeRepository : IGameChangeRepository
     };
 
     private readonly IPostgresConnectionFactory _connectionFactory;
+    private readonly GameChangeDispatcher _dispatcher;
 
-    public GameChangeRepository(IPostgresConnectionFactory connectionFactory)
+    public GameChangeRepository(IPostgresConnectionFactory connectionFactory, GameChangeDispatcher dispatcher)
     {
         _connectionFactory = connectionFactory;
+        _dispatcher = dispatcher;
     }
 
     public async Task<IReadOnlyList<JsonElement>?> GetChangesAsync(Guid accountId, Guid gameStateId, string? status, CancellationToken cancellationToken)
@@ -94,16 +97,24 @@ public sealed class GameChangeRepository : IGameChangeRepository
                 return null;
             }
 
-            var result = await ApplyOperationAsync(
+            var context = new GameChangeContext(
                 connection,
                 transaction,
                 accountId,
                 gameStateId,
                 changeId,
                 change.Value.GameTurnId,
-                change.Value.Operation,
-                change.Value.Payload,
-                cancellationToken);
+                (canonicalOperation, payload, token) => ApplyCanonicalOperationAsync(
+                    connection,
+                    transaction,
+                    accountId,
+                    gameStateId,
+                    changeId,
+                    change.Value.GameTurnId,
+                    canonicalOperation,
+                    payload,
+                    token));
+            var result = await _dispatcher.DispatchAsync(context, change.Value.Operation, change.Value.Payload, cancellationToken);
             await MarkAppliedAsync(connection, transaction, accountId, gameStateId, changeId, result, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -161,7 +172,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         return await GetChangeAsync(accountId, gameStateId, changeId, cancellationToken);
     }
 
-    private static async Task<JsonElement> ApplyOperationAsync(
+    private static async Task<JsonElement> ApplyCanonicalOperationAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid accountId,
@@ -172,18 +183,6 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var descriptor = GameChangeOperationPolicy.Describe(operation);
-        if (!descriptor.IsKnown)
-        {
-            throw new RpgValidationException($"Unknown change operation: {operation}.");
-        }
-
-        if (!descriptor.IsSupported)
-        {
-            throw new RpgValidationException($"Unsupported change operation: {operation}.");
-        }
-
-        operation = descriptor.CanonicalOperation;
         return operation switch
         {
             "add_item" => await AddItemAsync(connection, transaction, gameStateId, payload, cancellationToken),
@@ -212,16 +211,6 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "unlock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: false, cancellationToken),
             "close_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
             "lock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
-            "добавить_предмет" => await AddItemAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "изменить_хп" => await ChangeHpAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "изменить_ресурс" => await ChangeResourceAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "добавить_состояние" => await AddConditionAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "удалить_состояние" => await DeleteConditionAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "обновить_квест" => await UpdateQuestAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "добавить_запись_журнала" => await AddLogEntryAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "переместить_предмет" => await MoveItemAsync(connection, transaction, gameStateId, payload, cancellationToken),
-            "запросить_бросок" => await RequestRollAsync(connection, transaction, accountId, gameStateId, changeId, gameTurnId, payload, cancellationToken),
-            "обновить_память" => await UpdateMemoryAsync(connection, transaction, gameStateId, payload, cancellationToken),
             _ => throw new RpgValidationException($"Unsupported change operation: {operation}.")
         };
     }
@@ -257,18 +246,18 @@ public sealed class GameChangeRepository : IGameChangeRepository
         }
 
         var reason = GetOptionalString(payload, "причина", "reason") ?? string.Empty;
-        var normalizedPayload = JsonSerializer.SerializeToElement(new
+        var normalizedPayload = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
-            тип = "ability_check",
-            type = "ability_check",
-            персонажId = characterId,
-            characterId,
-            характеристика = ability,
-            ability,
-            сложность = difficultyClass,
-            difficultyClass,
-            причина = reason,
-            reason
+            ["тип"] = "ability_check",
+            ["type"] = "ability_check",
+            ["персонажId"] = characterId,
+            ["characterId"] = characterId,
+            ["характеристика"] = ability,
+            ["ability"] = ability,
+            ["сложность"] = difficultyClass,
+            ["difficultyClass"] = difficultyClass,
+            ["причина"] = reason,
+            ["reason"] = reason
         });
 
         const string sql = """
@@ -360,7 +349,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
         return JsonSerializer.SerializeToElement(new
         {
-            operation = "обновить_память",
+            operation = "РѕР±РЅРѕРІРёС‚СЊ_РїР°РјСЏС‚СЊ",
             updated = merged.UpdatedFields
         });
     }
@@ -369,7 +358,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
     {
         if (payload.ValueKind != JsonValueKind.Object)
         {
-            throw new RpgValidationException("payload update_memory должен быть JSON object.");
+            throw new RpgValidationException("payload update_memory РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ JSON object.");
         }
 
         var patch = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
@@ -403,10 +392,10 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var scene = GetOptionalElement(payload, "scene", "сцена", "currentScene", "текущаяСцена") ?? payload;
+        var scene = GetOptionalElement(payload, "scene", "СЃС†РµРЅР°", "currentScene", "С‚РµРєСѓС‰Р°СЏРЎС†РµРЅР°") ?? payload;
         if (scene.ValueKind != JsonValueKind.Object)
         {
-            throw new RpgValidationException("scene должен быть JSON object.");
+            throw new RpgValidationException("scene РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ JSON object.");
         }
 
         var patch = JsonSerializer.SerializeToElement(new
@@ -424,7 +413,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var targetLocationId = GetRequiredGuid(payload, "targetLocationId", "locationId", "локацияId", "целеваяЛокацияId");
+        var targetLocationId = GetRequiredGuid(payload, "targetLocationId", "locationId", "Р»РѕРєР°С†РёСЏId", "С†РµР»РµРІР°СЏР›РѕРєР°С†РёСЏId");
         await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, targetLocationId, "Location was not found.", cancellationToken);
 
         const string sql = """
@@ -451,7 +440,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         bool isLocked,
         CancellationToken cancellationToken)
     {
-        var exitId = GetRequiredGuid(payload, "exitId", "locationExitId", "выходId");
+        var exitId = GetRequiredGuid(payload, "exitId", "locationExitId", "РІС‹С…РѕРґId");
         const string sql = """
             UPDATE game.location_exits
             SET is_locked = @isLocked
@@ -497,9 +486,9 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("title", GetRequiredString(payload, "title", "name", "название"));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "статус")));
+        command.Parameters.AddWithValue("title", GetRequiredString(payload, "title", "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "СЃС‚Р°С‚СѓСЃ")));
         var questId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Quest id was not returned."));
         return JsonSerializer.SerializeToElement(new { operation = "create_quest", questId });
@@ -507,7 +496,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> CreateQuestStepAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var questId = GetRequiredGuid(payload, "questId", "quest_id", "квестId");
+        var questId = GetRequiredGuid(payload, "questId", "quest_id", "РєРІРµСЃС‚Id");
         await ValidateEntityAsync(connection, transaction, "game.quests", gameStateId, questId, "Quest was not found.", cancellationToken);
 
         const string sql = """
@@ -519,8 +508,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("questId", questId);
-        command.Parameters.AddWithValue("description", GetRequiredString(payload, "description", "описание"));
-        command.Parameters.AddWithValue("sortOrder", Math.Max(0, GetOptionalInt(payload, "sortOrder", "sort_order", "порядок") ?? 0));
+        command.Parameters.AddWithValue("description", GetRequiredString(payload, "description", "РѕРїРёСЃР°РЅРёРµ"));
+        command.Parameters.AddWithValue("sortOrder", Math.Max(0, GetOptionalInt(payload, "sortOrder", "sort_order", "РїРѕСЂСЏРґРѕРє") ?? 0));
         var questStepId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Quest step id was not returned."));
         return JsonSerializer.SerializeToElement(new { operation = "create_quest_step", questId, questStepId });
@@ -528,8 +517,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> CompleteQuestStepAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var questStepId = GetRequiredGuid(payload, "questStepId", "quest_step_id", "шагКвестаId");
-        var questId = GetOptionalGuid(payload, "questId", "quest_id", "квестId");
+        var questStepId = GetRequiredGuid(payload, "questStepId", "quest_step_id", "С€Р°РіРљРІРµСЃС‚Р°Id");
+        var questId = GetOptionalGuid(payload, "questId", "quest_id", "РєРІРµСЃС‚Id");
 
         var sql = questId.HasValue
             ? "UPDATE game.quest_steps SET is_completed = true WHERE game_state_id = @gameStateId AND id = @questStepId AND quest_id = @questId;"
@@ -561,8 +550,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
         var locationId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Location id was not returned."));
         return JsonSerializer.SerializeToElement(new { operation = "create_location", locationId });
@@ -570,7 +559,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> UpdateLocationAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var locationId = GetRequiredGuid(payload, "locationId", "location_id", "локацияId");
+        var locationId = GetRequiredGuid(payload, "locationId", "location_id", "Р»РѕРєР°С†РёСЏId");
         const string sql = """
             UPDATE game.locations
             SET name = COALESCE(@name, name),
@@ -582,8 +571,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("locationId", locationId);
-        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "название")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
+        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "РЅР°Р·РІР°РЅРёРµ")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
         {
             throw new RpgValidationException("Location was not found.");
@@ -594,7 +583,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> CreateNpcAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "локацияId");
+        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "Р»РѕРєР°С†РёСЏId");
         if (locationId.HasValue)
         {
             await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, locationId.Value, "Location was not found.", cancellationToken);
@@ -609,11 +598,11 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("locationId", locationId.HasValue ? locationId.Value : DBNull.Value);
-        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
-        command.Parameters.AddWithValue("role", DbString(GetOptionalString(payload, "role", "роль")));
-        command.Parameters.AddWithValue("attitude", DbString(GetOptionalString(payload, "attitude", "отношение")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("isAlive", GetOptionalBool(payload, "isAlive", "is_alive", "живой") ?? true);
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("role", DbString(GetOptionalString(payload, "role", "СЂРѕР»СЊ")));
+        command.Parameters.AddWithValue("attitude", DbString(GetOptionalString(payload, "attitude", "РѕС‚РЅРѕС€РµРЅРёРµ")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("isAlive", GetOptionalBool(payload, "isAlive", "is_alive", "Р¶РёРІРѕР№") ?? true);
         var npcId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("NPC id was not returned."));
         return JsonSerializer.SerializeToElement(new { operation = "create_npc", npcId, locationId });
@@ -622,7 +611,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
     private static async Task<JsonElement> UpdateNpcAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
         var npcId = GetRequiredGuid(payload, "npcId", "npc_id");
-        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "локацияId");
+        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "Р»РѕРєР°С†РёСЏId");
         if (locationId.HasValue)
         {
             await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, locationId.Value, "Location was not found.", cancellationToken);
@@ -644,11 +633,11 @@ public sealed class GameChangeRepository : IGameChangeRepository
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("npcId", npcId);
         command.Parameters.AddWithValue("locationId", locationId.HasValue ? locationId.Value : DBNull.Value);
-        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "название")));
-        command.Parameters.AddWithValue("role", DbString(GetOptionalString(payload, "role", "роль")));
-        command.Parameters.AddWithValue("attitude", DbString(GetOptionalString(payload, "attitude", "отношение")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("isAlive", DbBool(GetOptionalBool(payload, "isAlive", "is_alive", "живой")));
+        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "РЅР°Р·РІР°РЅРёРµ")));
+        command.Parameters.AddWithValue("role", DbString(GetOptionalString(payload, "role", "СЂРѕР»СЊ")));
+        command.Parameters.AddWithValue("attitude", DbString(GetOptionalString(payload, "attitude", "РѕС‚РЅРѕС€РµРЅРёРµ")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("isAlive", DbBool(GetOptionalBool(payload, "isAlive", "is_alive", "Р¶РёРІРѕР№")));
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
         {
             throw new RpgValidationException("NPC was not found.");
@@ -659,23 +648,23 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> CreateWorldObjectAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var locationId = GetRequiredGuid(payload, "locationId", "location_id", "локацияId");
+        var locationId = GetRequiredGuid(payload, "locationId", "location_id", "Р»РѕРєР°С†РёСЏId");
         await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, locationId, "Location was not found.", cancellationToken);
 
         const string sql = """
             INSERT INTO game.world_objects (game_state_id, location_id, name, object_type, description, state, tags)
-            VALUES (@gameStateId, @locationId, @name, @objectType, @description, COALESCE(@state, 'обычное'), @tags)
+            VALUES (@gameStateId, @locationId, @name, @objectType, @description, COALESCE(@state, 'РѕР±С‹С‡РЅРѕРµ'), @tags)
             RETURNING id;
         """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("locationId", locationId);
-        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
-        command.Parameters.AddWithValue("objectType", GetRequiredString(payload, "objectType", "object_type", "type", "тип"));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("state", DbString(GetOptionalString(payload, "state", "состояние")));
-        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText() ?? "[]");
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("objectType", GetRequiredString(payload, "objectType", "object_type", "type", "С‚РёРї"));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("state", DbString(GetOptionalString(payload, "state", "СЃРѕСЃС‚РѕСЏРЅРёРµ")));
+        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "С‚РµРіРё")?.GetRawText() ?? "[]");
         var objectId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("World object id was not returned."));
         return JsonSerializer.SerializeToElement(new { operation = "create_world_object", objectId, locationId });
@@ -683,8 +672,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> UpdateWorldObjectAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var objectId = GetRequiredGuid(payload, "objectId", "object_id", "объектId");
-        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "локацияId");
+        var objectId = GetRequiredGuid(payload, "objectId", "object_id", "РѕР±СЉРµРєС‚Id");
+        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "Р»РѕРєР°С†РёСЏId");
         if (locationId.HasValue)
         {
             await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, locationId.Value, "Location was not found.", cancellationToken);
@@ -706,11 +695,11 @@ public sealed class GameChangeRepository : IGameChangeRepository
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("objectId", objectId);
         command.Parameters.AddWithValue("locationId", locationId.HasValue ? locationId.Value : DBNull.Value);
-        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "название")));
-        command.Parameters.AddWithValue("objectType", DbString(GetOptionalString(payload, "objectType", "object_type", "type", "тип")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("state", DbString(GetOptionalString(payload, "state", "состояние")));
-        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText());
+        command.Parameters.AddWithValue("name", DbString(GetOptionalString(payload, "name", "РЅР°Р·РІР°РЅРёРµ")));
+        command.Parameters.AddWithValue("objectType", DbString(GetOptionalString(payload, "objectType", "object_type", "type", "С‚РёРї")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("state", DbString(GetOptionalString(payload, "state", "СЃРѕСЃС‚РѕСЏРЅРёРµ")));
+        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "С‚РµРіРё")?.GetRawText());
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
         {
             throw new RpgValidationException("World object was not found.");
@@ -721,7 +710,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
     private static async Task<JsonElement> AddItemAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
     {
-        var characterId = GetOptionalGuid(payload, "characterId", "character_id", "playerId", "player_id", "персонажId");
+        var characterId = GetOptionalGuid(payload, "characterId", "character_id", "playerId", "player_id", "РїРµСЂСЃРѕРЅР°Р¶Id");
         var ownerKind = GetOptionalString(payload, "ownerKind", "owner_kind") ?? (characterId.HasValue ? "player_inventory" : null);
         var ownerId = GetOptionalGuid(payload, "ownerId", "owner_id") ?? characterId;
 
@@ -783,28 +772,28 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("templateId", DbString(GetOptionalString(payload, "templateId", "template_id")));
-        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
-        command.Parameters.AddWithValue("itemType", GetRequiredString(payload, "itemType", "item_type", "тип"));
-        command.Parameters.AddWithValue("subtype", DbString(GetOptionalString(payload, "subtype", "подтип")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("quantity", Math.Max(0, GetOptionalInt(payload, "quantity", "количество") ?? 1));
-        command.Parameters.AddWithValue("stackable", GetOptionalBool(payload, "stackable", "стакуемый") ?? false);
-        command.Parameters.AddWithValue("weightEach", Math.Max(0m, GetOptionalDecimal(payload, "weightEach", "weight_each", "вес") ?? 0m));
-        command.Parameters.AddWithValue("condition", GetOptionalString(payload, "condition", "состояние") ?? "normal");
-        command.Parameters.AddWithValue("rarity", GetOptionalString(payload, "rarity", "редкость") ?? "common");
-        command.Parameters.AddWithValue("isMagical", GetOptionalBool(payload, "isMagical", "is_magical", "магический") ?? false);
-        command.Parameters.AddWithValue("priceCopper", Math.Max(0, GetOptionalInt(payload, "priceCopper", "price_copper", "медные") ?? 0));
-        command.Parameters.AddWithValue("priceSilver", Math.Max(0, GetOptionalInt(payload, "priceSilver", "price_silver", "серебряные") ?? 0));
-        command.Parameters.AddWithValue("priceGold", Math.Max(0, GetOptionalInt(payload, "priceGold", "price_gold", "золотые") ?? 0));
-        command.Parameters.AddWithValue("pricePlatinum", Math.Max(0, GetOptionalInt(payload, "pricePlatinum", "price_platinum", "платиновые") ?? 0));
-        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText() ?? "[]");
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("itemType", GetRequiredString(payload, "itemType", "item_type", "С‚РёРї"));
+        command.Parameters.AddWithValue("subtype", DbString(GetOptionalString(payload, "subtype", "РїРѕРґС‚РёРї")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("quantity", Math.Max(0, GetOptionalInt(payload, "quantity", "РєРѕР»РёС‡РµСЃС‚РІРѕ") ?? 1));
+        command.Parameters.AddWithValue("stackable", GetOptionalBool(payload, "stackable", "СЃС‚Р°РєСѓРµРјС‹Р№") ?? false);
+        command.Parameters.AddWithValue("weightEach", Math.Max(0m, GetOptionalDecimal(payload, "weightEach", "weight_each", "РІРµСЃ") ?? 0m));
+        command.Parameters.AddWithValue("condition", GetOptionalString(payload, "condition", "СЃРѕСЃС‚РѕСЏРЅРёРµ") ?? "normal");
+        command.Parameters.AddWithValue("rarity", GetOptionalString(payload, "rarity", "СЂРµРґРєРѕСЃС‚СЊ") ?? "common");
+        command.Parameters.AddWithValue("isMagical", GetOptionalBool(payload, "isMagical", "is_magical", "РјР°РіРёС‡РµСЃРєРёР№") ?? false);
+        command.Parameters.AddWithValue("priceCopper", Math.Max(0, GetOptionalInt(payload, "priceCopper", "price_copper", "РјРµРґРЅС‹Рµ") ?? 0));
+        command.Parameters.AddWithValue("priceSilver", Math.Max(0, GetOptionalInt(payload, "priceSilver", "price_silver", "СЃРµСЂРµР±СЂСЏРЅС‹Рµ") ?? 0));
+        command.Parameters.AddWithValue("priceGold", Math.Max(0, GetOptionalInt(payload, "priceGold", "price_gold", "Р·РѕР»РѕС‚С‹Рµ") ?? 0));
+        command.Parameters.AddWithValue("pricePlatinum", Math.Max(0, GetOptionalInt(payload, "pricePlatinum", "price_platinum", "РїР»Р°С‚РёРЅРѕРІС‹Рµ") ?? 0));
+        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "С‚РµРіРё")?.GetRawText() ?? "[]");
         command.Parameters.AddWithValue("ownerKind", ownerKind);
         command.Parameters.AddWithValue("ownerId", ownerId.Value);
 
         var itemId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Item id was not returned."));
 
-        return JsonSerializer.SerializeToElement(new { operation = "добавить_предмет", itemId });
+        return JsonSerializer.SerializeToElement(new { operation = "РґРѕР±Р°РІРёС‚СЊ_РїСЂРµРґРјРµС‚", itemId });
     }
 
     private static async Task<JsonElement> ChangeHpAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -812,9 +801,9 @@ public sealed class GameChangeRepository : IGameChangeRepository
         var characterId = GetRequiredGuid(payload, "characterId", "character_id", "playerId", "player_id");
         await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
 
-        var hpMax = GetOptionalInt(payload, "hpMax", "hp_max", "хпМаксимум");
-        var hpCurrent = GetOptionalInt(payload, "hpCurrent", "hp_current", "хпТекущее");
-        var delta = GetOptionalInt(payload, "delta", "изменение");
+        var hpMax = GetOptionalInt(payload, "hpMax", "hp_max", "С…РїРњР°РєСЃРёРјСѓРј");
+        var hpCurrent = GetOptionalInt(payload, "hpCurrent", "hp_current", "С…РїРўРµРєСѓС‰РµРµ");
+        var delta = GetOptionalInt(payload, "delta", "РёР·РјРµРЅРµРЅРёРµ");
         if (!hpMax.HasValue && !hpCurrent.HasValue && !delta.HasValue)
         {
             throw new RpgValidationException("hpCurrent, hpMax, or delta is required.");
@@ -843,7 +832,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             throw new RpgValidationException("Player resources were not found.");
         }
 
-        return JsonSerializer.SerializeToElement(new { operation = "изменить_хп", characterId });
+        return JsonSerializer.SerializeToElement(new { operation = "РёР·РјРµРЅРёС‚СЊ_С…Рї", characterId });
     }
 
     private static async Task<JsonElement> ChangeResourceAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -866,15 +855,15 @@ public sealed class GameChangeRepository : IGameChangeRepository
             await using var command = new NpgsqlCommand(limitedSql, connection, transaction);
             command.Parameters.AddWithValue("gameStateId", gameStateId);
             command.Parameters.AddWithValue("resourceId", resourceId.Value);
-            command.Parameters.AddWithValue("currentValue", DbInt(GetOptionalInt(payload, "currentValue", "current_value", "текущее")));
-            command.Parameters.AddWithValue("maxValue", DbInt(GetOptionalInt(payload, "maxValue", "max_value", "максимум")));
-            command.Parameters.AddWithValue("delta", DbInt(GetOptionalInt(payload, "delta", "изменение")));
+            command.Parameters.AddWithValue("currentValue", DbInt(GetOptionalInt(payload, "currentValue", "current_value", "С‚РµРєСѓС‰РµРµ")));
+            command.Parameters.AddWithValue("maxValue", DbInt(GetOptionalInt(payload, "maxValue", "max_value", "РјР°РєСЃРёРјСѓРј")));
+            command.Parameters.AddWithValue("delta", DbInt(GetOptionalInt(payload, "delta", "РёР·РјРµРЅРµРЅРёРµ")));
             if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 throw new RpgValidationException("Limited resource was not found.");
             }
 
-            return JsonSerializer.SerializeToElement(new { operation = "изменить_ресурс", resourceId });
+            return JsonSerializer.SerializeToElement(new { operation = "РёР·РјРµРЅРёС‚СЊ_СЂРµСЃСѓСЂСЃ", resourceId });
         }
 
         var characterId = GetRequiredGuid(payload, "characterId", "character_id", "playerId", "player_id");
@@ -893,8 +882,8 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var update = new NpgsqlCommand(sql, connection, transaction);
         update.Parameters.AddWithValue("gameStateId", gameStateId);
         update.Parameters.AddWithValue("characterId", characterId);
-        update.Parameters.AddWithValue("manaCurrent", DbInt(GetOptionalInt(payload, "manaCurrent", "mana_current", "манаТекущая")));
-        update.Parameters.AddWithValue("manaMax", DbInt(GetOptionalInt(payload, "manaMax", "mana_max", "манаМаксимум")));
+        update.Parameters.AddWithValue("manaCurrent", DbInt(GetOptionalInt(payload, "manaCurrent", "mana_current", "РјР°РЅР°РўРµРєСѓС‰Р°СЏ")));
+        update.Parameters.AddWithValue("manaMax", DbInt(GetOptionalInt(payload, "manaMax", "mana_max", "РјР°РЅР°РњР°РєСЃРёРјСѓРј")));
         update.Parameters.AddWithValue("actionPointsCurrent", DbInt(GetOptionalInt(payload, "actionPointsCurrent", "action_points_current")));
         update.Parameters.AddWithValue("actionPointsMax", DbInt(GetOptionalInt(payload, "actionPointsMax", "action_points_max")));
         if (await update.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -902,7 +891,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             throw new RpgValidationException("Player resources were not found.");
         }
 
-        return JsonSerializer.SerializeToElement(new { operation = "изменить_ресурс", characterId });
+        return JsonSerializer.SerializeToElement(new { operation = "РёР·РјРµРЅРёС‚СЊ_СЂРµСЃСѓСЂСЃ", characterId });
     }
 
     private static async Task<JsonElement> AddConditionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -947,21 +936,21 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
-        command.Parameters.AddWithValue("type", GetRequiredString(payload, "type", "тип"));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("source", DbString(GetOptionalString(payload, "source", "источник")));
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "РЅР°Р·РІР°РЅРёРµ"));
+        command.Parameters.AddWithValue("type", GetRequiredString(payload, "type", "С‚РёРї"));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("source", DbString(GetOptionalString(payload, "source", "РёСЃС‚РѕС‡РЅРёРє")));
         command.Parameters.AddWithValue("remainingTurns", DbInt(GetOptionalInt(payload, "remainingTurns", "remaining_turns")));
         command.Parameters.AddWithValue("isPermanent", GetOptionalBool(payload, "isPermanent", "is_permanent") ?? false);
-        command.Parameters.AddWithValue("stacks", Math.Max(1, GetOptionalInt(payload, "stacks", "стаки") ?? 1));
+        command.Parameters.AddWithValue("stacks", Math.Max(1, GetOptionalInt(payload, "stacks", "СЃС‚Р°РєРё") ?? 1));
         command.Parameters.AddWithValue("maxStacks", DbInt(GetOptionalInt(payload, "maxStacks", "max_stacks")));
-        AddJsonb(command, "effects", GetOptionalElement(payload, "effects", "эффекты")?.GetRawText() ?? "[]");
-        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText() ?? "[]");
+        AddJsonb(command, "effects", GetOptionalElement(payload, "effects", "СЌС„С„РµРєС‚С‹")?.GetRawText() ?? "[]");
+        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "С‚РµРіРё")?.GetRawText() ?? "[]");
 
         var conditionId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Condition id was not returned."));
 
-        return JsonSerializer.SerializeToElement(new { operation = "добавить_состояние", conditionId });
+        return JsonSerializer.SerializeToElement(new { operation = "РґРѕР±Р°РІРёС‚СЊ_СЃРѕСЃС‚РѕСЏРЅРёРµ", conditionId });
     }
 
     private static async Task<JsonElement> DeleteConditionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -981,7 +970,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             throw new RpgValidationException("Condition was not found.");
         }
 
-        return JsonSerializer.SerializeToElement(new { operation = "удалить_состояние", conditionId });
+        return JsonSerializer.SerializeToElement(new { operation = "СѓРґР°Р»РёС‚СЊ_СЃРѕСЃС‚РѕСЏРЅРёРµ", conditionId });
     }
 
     private static async Task<JsonElement> UpdateQuestAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -1004,9 +993,9 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("questId", questId);
-        command.Parameters.AddWithValue("title", DbString(GetOptionalString(payload, "title", "название")));
-        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
-        command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "статус")));
+        command.Parameters.AddWithValue("title", DbString(GetOptionalString(payload, "title", "РЅР°Р·РІР°РЅРёРµ")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "РѕРїРёСЃР°РЅРёРµ")));
+        command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "СЃС‚Р°С‚СѓСЃ")));
         command.Parameters.AddWithValue("rewardExperience", DbInt(GetOptionalInt(payload, "rewardExperience", "reward_experience")));
         command.Parameters.AddWithValue("rewardCopper", DbInt(GetOptionalInt(payload, "rewardCopper", "reward_copper")));
         command.Parameters.AddWithValue("rewardSilver", DbInt(GetOptionalInt(payload, "rewardSilver", "reward_silver")));
@@ -1017,7 +1006,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             throw new RpgValidationException("Quest was not found.");
         }
 
-        return JsonSerializer.SerializeToElement(new { operation = "обновить_квест", questId });
+        return JsonSerializer.SerializeToElement(new { operation = "РѕР±РЅРѕРІРёС‚СЊ_РєРІРµСЃС‚", questId });
     }
 
     private static async Task<JsonElement> AddLogEntryAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -1054,13 +1043,13 @@ public sealed class GameChangeRepository : IGameChangeRepository
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("turnNumber", Math.Max(0, turnNumber.Value));
-        command.Parameters.AddWithValue("type", GetOptionalString(payload, "type", "тип") ?? "system");
-        command.Parameters.AddWithValue("text", GetRequiredString(payload, "text", "текст"));
-        command.Parameters.AddWithValue("important", GetOptionalBool(payload, "important", "важное") ?? false);
+        command.Parameters.AddWithValue("type", GetOptionalString(payload, "type", "С‚РёРї") ?? "system");
+        command.Parameters.AddWithValue("text", GetRequiredString(payload, "text", "С‚РµРєСЃС‚"));
+        command.Parameters.AddWithValue("important", GetOptionalBool(payload, "important", "РІР°Р¶РЅРѕРµ") ?? false);
         var logId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Log entry id was not returned."));
 
-        return JsonSerializer.SerializeToElement(new { operation = "добавить_запись_журнала", logId });
+        return JsonSerializer.SerializeToElement(new { operation = "РґРѕР±Р°РІРёС‚СЊ_Р·Р°РїРёСЃСЊ_Р¶СѓСЂРЅР°Р»Р°", logId });
     }
 
     private static async Task<JsonElement> MoveItemAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
@@ -1112,7 +1101,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             await clearCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return JsonSerializer.SerializeToElement(new { operation = "переместить_предмет", itemId, ownerKind, ownerId });
+        return JsonSerializer.SerializeToElement(new { operation = "РїРµСЂРµРјРµСЃС‚РёС‚СЊ_РїСЂРµРґРјРµС‚", itemId, ownerKind, ownerId });
     }
 
     private static async Task MarkAppliedAsync(
@@ -1188,14 +1177,14 @@ public sealed class GameChangeRepository : IGameChangeRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'gameStateId', cm.game_state_id,
-                'резюме', cm.summary,
-                'текущаяСцена', cm.current_scene,
-                'важныеФакты', cm.important_facts,
-                'открытыеЛинии', cm.open_threads,
-                'закрытыеЛинии', cm.resolved_threads,
-                'известныеNpc', cm.known_npcs,
-                'известныеЛокации', cm.known_locations,
-                'секретыМастера', cm.master_secrets,
+                'СЂРµР·СЋРјРµ', cm.summary,
+                'С‚РµРєСѓС‰Р°СЏРЎС†РµРЅР°', cm.current_scene,
+                'РІР°Р¶РЅС‹РµР¤Р°РєС‚С‹', cm.important_facts,
+                'РѕС‚РєСЂС‹С‚С‹РµР›РёРЅРёРё', cm.open_threads,
+                'Р·Р°РєСЂС‹С‚С‹РµР›РёРЅРёРё', cm.resolved_threads,
+                'РёР·РІРµСЃС‚РЅС‹РµNpc', cm.known_npcs,
+                'РёР·РІРµСЃС‚РЅС‹РµР›РѕРєР°С†РёРё', cm.known_locations,
+                'СЃРµРєСЂРµС‚С‹РњР°СЃС‚РµСЂР°', cm.master_secrets,
                 'updatedAt', cm.updated_at
             )::text
             FROM game.campaign_memories cm
@@ -1208,7 +1197,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         var value = await command.ExecuteScalarAsync(cancellationToken);
         if (value is null or DBNull)
         {
-            throw new RpgValidationException("Память кампании не найдена.");
+            throw new RpgValidationException("РџР°РјСЏС‚СЊ РєР°РјРїР°РЅРёРё РЅРµ РЅР°Р№РґРµРЅР°.");
         }
 
         return RpgDbJson.ParseElement(value.ToString()!);

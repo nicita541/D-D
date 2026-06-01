@@ -2,6 +2,7 @@ using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Play;
 using backend.Contracts.Rpg.Turns;
+using backend.Modules.Changes;
 
 namespace backend.Services.Rpg;
 

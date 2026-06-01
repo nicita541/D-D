@@ -1,4 +1,4 @@
-namespace backend.Services.Rpg;
+namespace backend.Modules.Changes;
 
 public enum GameChangeOperationClass
 {
@@ -259,6 +259,8 @@ public static class GameChangeOperationPolicy
         "advance_time",
         "apply_condition_duration",
         "tick_conditions",
+        "add_condition",
+        "delete_condition",
         "kill_character"
     };
 
