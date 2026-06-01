@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Modules.Play;
 using backend.Modules.Changes;
@@ -137,8 +137,7 @@ public sealed class PlayStateService : IPlayStateService
         }
 
         if (TryGetBool(combat.Value, "isActive", out var isActive)
-            || TryGetBool(combat.Value, "активен", out isActive)
-            || TryGetBool(combat.Value, "Р°РєС‚РёРІРµРЅ", out isActive))
+            || TryGetBool(combat.Value, "активен", out isActive))
         {
             return isActive;
         }

@@ -11,18 +11,18 @@ namespace backend.Modules.Play;
 public sealed class PlayApplicationService : IPlayApplicationService
 {
     private const string DefaultStartMessage = """
-        РќР°С‡РЅРё РЅРѕРІСѓСЋ РѕРґРёРЅРѕС‡РЅСѓСЋ RPG-СЃС†РµРЅСѓ РґР»СЏ РјРѕРµРіРѕ РїРµСЂСЃРѕРЅР°Р¶Р°.
+        Начни новую одиночную RPG-сцену для моего персонажа.
 
-        РСЃРїРѕР»СЊР·СѓР№ С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РёРіСЂС‹, РїРµСЂСЃРѕРЅР°Р¶РµР№, РјРёСЂР°, Р»РѕРєР°С†РёРё, РєРІРµСЃС‚РѕРІ Рё РёСЃС‚РѕСЂРёРё РёР· РєРѕРЅС‚РµРєСЃС‚Р°.
-        РџСЂРµРґСЃС‚Р°РІСЊ СЃС‚Р°СЂС‚РѕРІСѓСЋ СЃС†РµРЅСѓ, Р±Р»РёР¶Р°Р№С€СѓСЋ С†РµР»СЊ, Р°С‚РјРѕСЃС„РµСЂСѓ, РІР°Р¶РЅСѓСЋ СѓРіСЂРѕР·Сѓ РёР»Рё NPC.
-        РќРµ СЃРѕР·РґР°РІР°Р№ С„РёРЅР°Р» СЃСЂР°Р·Сѓ.
-        Р”Р°Р№ РёРіСЂРѕРєСѓ РїРѕРЅСЏС‚РЅСѓСЋ СЃРёС‚СѓР°С†РёСЋ Рё 2-4 РµСЃС‚РµСЃС‚РІРµРЅРЅС‹С… РІР°СЂРёР°РЅС‚Р° РґРµР№СЃС‚РІРёСЏ, РЅРѕ РЅРµ РѕРіСЂР°РЅРёС‡РёРІР°Р№ РµРіРѕ С‚РѕР»СЊРєРѕ РёРјРё.
-        Р•СЃР»Рё РЅСѓР¶РЅР° РїСЂРѕРІРµСЂРєР° РЅР°РІС‹РєР° РёР»Рё С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё вЂ” РїСЂРµРґР»РѕР¶Рё РµС‘ С‡РµСЂРµР· РїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ JSON changes.
+        Используй текущее состояние игры, персонажей, мира, локации, квестов и истории из контекста.
+        Представь стартовую сцену, ближайшую цель, атмосферу, важную угрозу или NPC.
+        Не создавай финал сразу.
+        Дай игроку понятную ситуацию и 2-4 естественных варианта действия, но не ограничивай его только ими.
+        Если нужна проверка навыка или характеристики — предложи её через поддерживаемый JSON changes.
         """;
 
     private const string DefaultContinueMessage = """
-        РџСЂРѕРґРѕР»Р¶Рё СЃС†РµРЅСѓ РїРѕСЃР»Рµ РїРѕСЃР»РµРґРЅРµРіРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р° РїСЂРѕРІРµСЂРєРё РёР»Рё РјРµС…Р°РЅРёС‡РµСЃРєРѕРіРѕ РґРµР№СЃС‚РІРёСЏ.
-        РЈС‡С‚Рё РїРѕСЃР»РµРґРЅРёРµ resolved mechanic requests, Р±СЂРѕСЃРєРё, pending/applied changes Рё С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РёРіСЂС‹.
+        Продолжи сцену после последнего результата проверки или механического действия.
+        Учти последние resolved mechanic requests, броски, pending/applied changes и текущее состояние игры.
         """;
 
     private readonly IGameStateService _gameStates;
@@ -76,13 +76,13 @@ public sealed class PlayApplicationService : IPlayApplicationService
         var gameState = await _gameStates.GetGameStateAsync(accountId, gameStateId, cancellationToken);
         if (!gameState.HasValue)
         {
-            return RpgResult<JsonElement>.NotFound("GameState РЅРµ РЅР°Р№РґРµРЅ.");
+            return RpgResult<JsonElement>.NotFound("GameState не найден.");
         }
 
         var characters = await _characters.GetCharactersAsync(accountId, gameStateId, cancellationToken);
         if (characters.Count == 0)
         {
-            return RpgResult<JsonElement>.BadRequest("РџРµСЂРµРґ СЃС‚Р°СЂС‚РѕРј СЃСЋР¶РµС‚Р° РЅСѓР¶РЅРѕ СЃРѕР·РґР°С‚СЊ РїРµСЂСЃРѕРЅР°Р¶Р°.");
+            return RpgResult<JsonElement>.BadRequest("Перед стартом сюжета нужно создать персонажа.");
         }
 
         var startRequest = new CreateTurnRequest
@@ -178,6 +178,6 @@ public sealed class PlayApplicationService : IPlayApplicationService
 
         return string.IsNullOrWhiteSpace(request.ResolvedNote)
             ? message
-            : $"{message.Trim()}{Environment.NewLine}{Environment.NewLine}Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅР°СЏ Р·Р°РјРµС‚РєР° РёРіСЂРѕРєР°: {request.ResolvedNote}";
+            : $"{message.Trim()}{Environment.NewLine}{Environment.NewLine}Дополнительная заметка игрока: {request.ResolvedNote}";
     }
 }
