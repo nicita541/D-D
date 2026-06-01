@@ -9,12 +9,20 @@ public sealed class GameChangeDispatcher
 
     public GameChangeDispatcher(IEnumerable<IGameChangeHandler> handlers)
     {
-        _handlers = handlers
+        var grouped = handlers
             .GroupBy(handler => handler.Operation, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => group.First(),
-                StringComparer.OrdinalIgnoreCase);
+            .ToArray();
+
+        var duplicate = grouped.FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Duplicate change handler registered for operation: {duplicate.Key}.");
+        }
+
+        _handlers = grouped.ToDictionary(
+            group => group.Key,
+            group => group.Single(),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<JsonElement> DispatchAsync(
@@ -37,6 +45,11 @@ public sealed class GameChangeDispatcher
         if (!_handlers.TryGetValue(descriptor.CanonicalOperation, out var handler))
         {
             throw new RpgValidationException($"No change handler registered for operation: {descriptor.CanonicalOperation}.");
+        }
+
+        if (!string.Equals(handler.Operation, descriptor.CanonicalOperation, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RpgValidationException($"Change handler operation mismatch: {handler.Operation}.");
         }
 
         if (!handler.IsSupported)

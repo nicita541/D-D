@@ -2,7 +2,7 @@ using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Repositories.Rpg;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Changes;
 
 public sealed class GameChangeService : IGameChangeService
 {

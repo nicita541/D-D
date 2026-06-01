@@ -1,4 +1,4 @@
-﻿namespace backend.Contracts.Rpg.Combat;
+namespace backend.Modules.Combat;
 
 public sealed class CombatValidationException : Exception
 {

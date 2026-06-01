@@ -3,6 +3,8 @@ using System.Text.Json;
 using backend.Controllers;
 using backend.Controllers.Rpg;
 using backend.Infrastructure.Auth;
+using backend.Modules.Changes;
+using backend.Modules.Combat;
 using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

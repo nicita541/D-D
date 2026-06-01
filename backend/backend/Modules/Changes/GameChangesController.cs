@@ -1,11 +1,11 @@
-using backend.Contracts.Rpg.Changes;
+using backend.Modules.Changes;
 using backend.Contracts.Rpg.Common;
 using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace backend.Controllers.Rpg;
+namespace backend.Modules.Changes;
 
 [Authorize]
 [ApiController]

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace backend.Repositories.Rpg;
+namespace backend.Modules.Changes;
 
 public interface IGameChangeRepository
 {

@@ -4,6 +4,7 @@ using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Mechanics;
 using backend.Contracts.Rpg.Memory;
 using backend.Infrastructure.Ai;
+using backend.Modules.Combat;
 using backend.Repositories.Rpg;
 using backend.Services.Rpg;
 

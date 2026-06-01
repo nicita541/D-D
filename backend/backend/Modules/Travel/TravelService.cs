@@ -1,9 +1,9 @@
 using System.Text.Json;
 using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Play;
+using backend.Modules.Play;
 using backend.Repositories.Rpg;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Travel;
 
 public sealed class TravelService : ITravelService
 {

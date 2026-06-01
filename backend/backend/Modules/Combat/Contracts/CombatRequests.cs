@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace backend.Contracts.Rpg.Combat;
+namespace backend.Modules.Combat;
 
 public sealed class StartCombatRequest
 {

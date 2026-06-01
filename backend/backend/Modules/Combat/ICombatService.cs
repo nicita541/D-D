@@ -1,7 +1,7 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Combat;
 
 public interface ICombatService
 {

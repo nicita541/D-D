@@ -2,11 +2,11 @@
 
 ## Stage A: Modular Skeleton Without Behavior Change
 
-Status: started.
+Status: completed for active modules.
 
 - Create `Modules` and `Shared`.
 - Move Play, Travel, Combat, and Changes implementation files under module folders.
-- Preserve namespaces where needed to avoid API churn.
+- Bring active module namespaces to `backend.Modules.Play`, `backend.Modules.Travel`, `backend.Modules.Combat`, and `backend.Modules.Changes`.
 - Preserve all public routes.
 - Keep existing tests and smoke scripts green.
 
@@ -23,9 +23,14 @@ Status: transitional implementation added.
 
 Current limitation: handlers delegate back into `GameChangeRepository` for SQL execution. This keeps behavior stable. The next refactor should move SQL from repository switch into handlers or operation-specific repositories.
 
+Additional cleanup completed:
+- `RepositoryBackedChangeHandlerBase` introduced to remove repeated handler boilerplate.
+- `GameChangeDispatcher` fails fast for duplicate handlers.
+- `GameChangeOperationPolicy` exposes `IsKnown`, `IsSupported`, `IsSafeAutoApply`, and `TryCanonicalize`.
+
 ## Stage C: Finish Current Closed-Loop Module Split
 
-Status: in progress.
+Status: completed for Play, Travel, Combat, and Changes.
 
 - Play files now live under `Modules/Play`.
 - Travel files now live under `Modules/Travel`.
@@ -35,6 +40,7 @@ Status: in progress.
 Remaining work:
 - Move additional modules gradually: Auth, GameStates, Characters, Turns, Ai, Mechanics, Memory, World, Inventory.
 - Reduce legacy `Controllers/Services/Repositories` folders as modules migrate.
+- Move SQL out of `GameChangeRepository` into operation handlers in a later low-risk tranche.
 
 ## Stage D: Prepare Planned Modules
 

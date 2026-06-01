@@ -1,9 +1,10 @@
 using System.Text.Json;
 using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
+using backend.Services.Rpg;
 using backend.Repositories.Rpg;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Combat;
 
 public sealed class CombatService : ICombatService
 {

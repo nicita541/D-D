@@ -1,4 +1,4 @@
-namespace backend.Services.Rpg;
+namespace backend.Modules.Combat;
 
 public static class CombatRules
 {

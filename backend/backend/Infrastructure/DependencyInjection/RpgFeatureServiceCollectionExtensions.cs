@@ -1,6 +1,8 @@
 using backend.Repositories.Rpg;
 using backend.Modules.Changes;
-using backend.Modules.Changes.Handlers;
+using backend.Modules.Combat;
+using backend.Modules.Play;
+using backend.Modules.Travel;
 using backend.Services.Rpg;
 
 namespace backend.Infrastructure.DependencyInjection;
@@ -74,6 +76,9 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddScoped<IPlayBootstrapService, PlayBootstrapService>();
         services.AddScoped<IPlayStateService, PlayStateService>();
         services.AddScoped<IPlayOrchestratorService, PlayOrchestratorService>();
+        services.AddScoped<IPlayApplicationService, PlayApplicationService>();
+        services.AddScoped<IPlayTravelFacade, PlayTravelFacade>();
+        services.AddScoped<IPlayCombatFacade, PlayCombatFacade>();
         services.AddScoped<ITravelService, TravelService>();
         services.AddScoped<IPromptBuilder, PromptBuilder>();
         services.AddSingleton<IDiceRoller, DiceRoller>();

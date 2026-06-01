@@ -1,7 +1,7 @@
 using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Play;
+using backend.Modules.Play;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Play;
 
 public interface IPlayOrchestratorService
 {

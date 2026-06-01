@@ -14,6 +14,12 @@ Active module folders:
 - `Modules/Combat`: combat controller/service/contracts/rules/repository.
 - `Modules/Changes`: game change policy, dispatcher, handlers, service, repository.
 
+The active module files now use module namespaces:
+- `backend.Modules.Play`
+- `backend.Modules.Travel`
+- `backend.Modules.Combat`
+- `backend.Modules.Changes`
+
 Existing modules that have not yet been physically moved still live under `Controllers`, `Services`, `Repositories`, and `Contracts`. New gameplay work should go under `Modules`.
 
 Shared cross-module code is being prepared under `Shared`. Existing shared result/error/database helpers are still in their old namespaces for compatibility and will move gradually.
@@ -28,6 +34,14 @@ Shared cross-module code is being prepared under `Shared`. Existing shared resul
 - `/api/players` remains absent.
 
 ## Play Flow
+
+`PlayController` is now a thin HTTP layer. It reads the current account from `ICurrentUserService`, delegates work to application/facade services, and maps `RpgResult<T>` through the shared action-result mapper.
+
+Play orchestration lives in:
+- `IPlayApplicationService` / `PlayApplicationService`
+- `IPlayTravelFacade` / `PlayTravelFacade`
+- `IPlayCombatFacade` / `PlayCombatFacade`
+- existing `IPlayOrchestratorService` and `IPlayStateService`
 
 `POST /play/act` is the main player action endpoint.
 
@@ -46,10 +60,13 @@ Shared cross-module code is being prepared under `Shared`. Existing shared resul
 `GameChangeDispatcher` now owns:
 - unknown operation handling;
 - unsupported operation handling;
+- duplicate handler fail-fast checks at construction;
 - handler lookup;
 - handler invocation.
 
-The current handler layer is transitional: handlers delegate to the existing SQL implementation in `GameChangeRepository`. This keeps behavior stable while preparing the codebase to move each operation into a dedicated handler.
+The current handler layer is transitional: handlers inherit from `RepositoryBackedChangeHandlerBase` and delegate to the existing SQL implementation in `GameChangeRepository`. This keeps behavior stable while preparing the codebase to move each operation into a dedicated handler.
+
+This cleanup tranche does not add monster, loot, XP, rewards, or new RPG mechanics.
 
 ## Future AI Worker Boundary
 

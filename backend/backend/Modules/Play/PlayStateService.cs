@@ -1,8 +1,11 @@
 using System.Text.Json;
 using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Play;
+using backend.Modules.Play;
+using backend.Modules.Changes;
+using backend.Modules.Combat;
+using backend.Services.Rpg;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Play;
 
 public sealed class PlayStateService : IPlayStateService
 {

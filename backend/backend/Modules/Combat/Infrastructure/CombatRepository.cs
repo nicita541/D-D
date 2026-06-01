@@ -1,10 +1,10 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
 using backend.Infrastructure.Database;
 using backend.Services.Rpg;
 using Npgsql;
 
-namespace backend.Repositories.Rpg;
+namespace backend.Modules.Combat;
 
 public sealed class CombatRepository : ICombatRepository
 {

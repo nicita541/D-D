@@ -1,8 +1,8 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using backend.Contracts.Rpg.Characters;
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.Mechanics;
-using backend.Contracts.Rpg.Play;
+using backend.Modules.Play;
 using backend.Contracts.Rpg.Turns;
 using backend.Modules.Changes;
 using backend.Repositories.Rpg;
@@ -74,6 +74,19 @@ public sealed class PlayableFlowTests
     }
 
     [Fact]
+    public void GameChangeOperationPolicy_ApiMethodsExposeKnownSupportedAndSafeState()
+    {
+        Assert.True(GameChangeOperationPolicy.IsKnown("добавить_запись_журнала"));
+        Assert.Equal("add_journal_entry", GameChangeOperationPolicy.TryCanonicalize("добавить_запись_журнала"));
+        Assert.Equal("add_journal_entry", GameChangeOperationPolicy.TryCanonicalize("add_journal_entry"));
+        Assert.Null(GameChangeOperationPolicy.TryCanonicalize("not_real"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("add_journal_entry"));
+        Assert.True(GameChangeOperationPolicy.IsSafeAutoApply("add_journal_entry"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("move_party_to_location"));
+        Assert.False(GameChangeOperationPolicy.IsSupported("spawn_monster"));
+    }
+
+    [Fact]
     public async Task PlayAct_ReturnsAwaitingRollWithoutCreatingTurn_WhenPendingMechanicRequestExists()
     {
         var turnService = new FakeTurnService();
@@ -101,7 +114,7 @@ public sealed class PlayableFlowTests
     {
         var turnService = new FakeTurnService
         {
-            CreateTurnResult = RpgResult<JsonElement>.Conflict("В этой игре уже обрабатывается ход.")
+            CreateTurnResult = RpgResult<JsonElement>.Conflict("Р’ СЌС‚РѕР№ РёРіСЂРµ СѓР¶Рµ РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ С…РѕРґ.")
         };
         var service = new PlayOrchestratorService(
             new FakeGameStateService(),

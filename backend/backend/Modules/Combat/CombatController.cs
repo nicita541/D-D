@@ -1,11 +1,11 @@
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
 using backend.Contracts.Rpg.Common;
 using backend.Infrastructure.Auth;
 using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace backend.Controllers.Rpg;
+namespace backend.Modules.Combat;
 
 [Authorize]
 [ApiController]

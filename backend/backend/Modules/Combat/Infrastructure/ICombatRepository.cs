@@ -1,8 +1,8 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
 using backend.Services.Rpg;
 
-namespace backend.Repositories.Rpg;
+namespace backend.Modules.Combat;
 
 public interface ICombatRepository
 {

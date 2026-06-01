@@ -64,4 +64,15 @@ These remain visible as pending/skipped changes with a reason such as `unsupport
 
 ## Dispatcher
 
-`GameChangeDispatcher` performs normalization and handler lookup. Current handlers delegate to the existing repository SQL executor. Future work should move each operation's SQL into its handler or a small operation-specific repository.
+`GameChangeDispatcher` performs normalization and handler lookup. It fails fast if two handlers register the same canonical operation. If policy marks an operation supported but no handler exists, the dispatcher returns a controlled validation failure instead of a `500`.
+
+Current handlers inherit from `RepositoryBackedChangeHandlerBase` and delegate to the existing repository SQL executor. Future work should move each operation's SQL into its handler or a small operation-specific repository.
+
+`GameChangeOperationPolicy` exposes:
+- `Describe`
+- `IsKnown`
+- `IsSupported`
+- `IsSafeAutoApply`
+- `TryCanonicalize`
+
+This cleanup tranche does not add new gameplay operations for monster, loot, XP, or rewards.

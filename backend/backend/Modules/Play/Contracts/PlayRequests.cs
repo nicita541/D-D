@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
-using backend.Contracts.Rpg.Combat;
+using backend.Modules.Combat;
 
-namespace backend.Contracts.Rpg.Play;
+namespace backend.Modules.Play;
 
 public sealed class PlayContinueRequest
 {

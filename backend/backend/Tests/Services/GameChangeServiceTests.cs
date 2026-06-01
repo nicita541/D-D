@@ -1,8 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 using backend.Modules.Changes;
-using backend.Repositories.Rpg;
-using backend.Services.Rpg;
 using Npgsql;
 
 namespace Tests.Services;
@@ -29,6 +27,42 @@ public sealed class GameChangeServiceTests
 
         var ex = await Assert.ThrowsAsync<RpgValidationException>(() =>
             dispatcher.DispatchAsync(context, "spawn_monster", JsonSerializer.SerializeToElement(new { }), CancellationToken.None));
+
+        Assert.Contains("Unsupported change operation", ex.Message);
+    }
+
+    [Fact]
+    public void GameChangeDispatcher_DuplicateHandlerOperationThrows()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => new GameChangeDispatcher(new[]
+        {
+            new FakeChangeHandler("add_journal_entry"),
+            new FakeChangeHandler("add_journal_entry")
+        }));
+
+        Assert.Contains("Duplicate change handler", ex.Message);
+    }
+
+    [Fact]
+    public async Task GameChangeDispatcher_SupportedPolicyWithoutHandlerReturnsControlledFailure()
+    {
+        var dispatcher = new GameChangeDispatcher(Array.Empty<IGameChangeHandler>());
+        var context = CreateFakeContext();
+
+        var ex = await Assert.ThrowsAsync<RpgValidationException>(() =>
+            dispatcher.DispatchAsync(context, "add_journal_entry", JsonSerializer.SerializeToElement(new { }), CancellationToken.None));
+
+        Assert.Contains("No change handler registered", ex.Message);
+    }
+
+    [Fact]
+    public async Task GameChangeDispatcher_HandlerMarkedUnsupportedReturnsControlledFailure()
+    {
+        var dispatcher = new GameChangeDispatcher(new[] { new FakeChangeHandler("add_journal_entry", isSupported: false) });
+        var context = CreateFakeContext();
+
+        var ex = await Assert.ThrowsAsync<RpgValidationException>(() =>
+            dispatcher.DispatchAsync(context, "add_journal_entry", JsonSerializer.SerializeToElement(new { }), CancellationToken.None));
 
         Assert.Contains("Unsupported change operation", ex.Message);
     }
@@ -72,16 +106,19 @@ public sealed class GameChangeServiceTests
 
     private sealed class FakeChangeHandler : IGameChangeHandler
     {
-        public FakeChangeHandler(string operation)
+        private readonly bool _isSupported;
+
+        public FakeChangeHandler(string operation, bool isSupported = true)
         {
             Operation = operation;
+            _isSupported = isSupported;
         }
 
         public string Operation { get; }
 
         public GameChangeOperationClass Class => GameChangeOperationClass.Safe;
 
-        public bool IsSupported => true;
+        public bool IsSupported => _isSupported;
 
         public bool Called { get; private set; }
 

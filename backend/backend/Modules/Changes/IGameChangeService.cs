@@ -1,7 +1,7 @@
 using System.Text.Json;
 using backend.Contracts.Rpg.Common;
 
-namespace backend.Services.Rpg;
+namespace backend.Modules.Changes;
 
 public interface IGameChangeService
 {

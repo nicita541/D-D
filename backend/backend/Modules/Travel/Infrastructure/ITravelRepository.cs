@@ -1,7 +1,7 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Play;
+using backend.Modules.Play;
 
-namespace backend.Repositories.Rpg;
+namespace backend.Modules.Travel;
 
 public interface ITravelRepository
 {

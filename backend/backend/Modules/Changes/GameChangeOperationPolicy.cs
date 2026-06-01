@@ -312,4 +312,16 @@ public static class GameChangeOperationPolicy
 
         return new GameChangeOperationDescriptor(original, canonical, operationClass, SupportedOperations.Contains(canonical));
     }
+
+    public static bool IsKnown(string? operation) => Describe(operation).IsKnown;
+
+    public static bool IsSupported(string? operation) => Describe(operation).IsSupported;
+
+    public static bool IsSafeAutoApply(string? operation) => Describe(operation).IsSafeAutoApply;
+
+    public static string? TryCanonicalize(string? operation)
+    {
+        var descriptor = Describe(operation);
+        return descriptor.IsKnown ? descriptor.CanonicalOperation : null;
+    }
 }

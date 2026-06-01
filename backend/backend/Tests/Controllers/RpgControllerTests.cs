@@ -7,6 +7,8 @@ using backend.Contracts.Rpg.Characters;
 using backend.Contracts.Rpg.Common;
 using backend.Contracts.Rpg.GameStates;
 using backend.Infrastructure.Auth;
+using backend.Modules.Changes;
+using backend.Modules.Combat;
 using backend.Repositories.Rpg;
 using backend.Services.Auth;
 using backend.Services.Rpg;

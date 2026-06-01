@@ -4,7 +4,7 @@ using backend.Services.Rpg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace backend.Controllers.Rpg;
+namespace backend.Modules.Travel;
 
 [Authorize]
 [ApiController]
