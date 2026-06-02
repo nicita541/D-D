@@ -1,10 +1,12 @@
 using System.Text.Json;
-using backend.Modules.Play;
+using backend.Modules.Play.Application;
+using backend.Modules.Play.Contracts;
+using backend.Modules.Play.Infrastructure;
 using backend.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
 
-namespace backend.Modules.Play;
+namespace backend.Modules.Play.Infrastructure;
 
 public sealed class PlayBootstrapRepository : IPlayBootstrapRepository
 {
@@ -149,8 +151,8 @@ public sealed class PlayBootstrapRepository : IPlayBootstrapRepository
 
         await using var insert = new NpgsqlCommand(insertSql, connection, transaction);
         insert.Parameters.AddWithValue("gameStateId", gameStateId);
-        insert.Parameters.AddWithValue("name", "Старая дорога");
-        insert.Parameters.AddWithValue("description", "Пыльная дорога у кромки леса. Рядом стоит покосившийся указатель и видны свежие следы.");
+        insert.Parameters.AddWithValue("name", "������ ������");
+        insert.Parameters.AddWithValue("description", "������� ������ � ������ ����. ����� ����� ������������ ��������� � ����� ������ �����.");
         return (Guid)(await insert.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Bootstrap location id was not returned."));
     }
@@ -178,7 +180,7 @@ public sealed class PlayBootstrapRepository : IPlayBootstrapRepository
         await using var insert = new NpgsqlCommand(insertSql, connection, transaction);
         insert.Parameters.AddWithValue("gameStateId", gameStateId);
         insert.Parameters.AddWithValue("title", "Первый след");
-        insert.Parameters.AddWithValue("description", "Разобраться, что случилось у старой дороги, и найти источник тревожных следов.");
+        insert.Parameters.AddWithValue("description", "�����������, ��� ��������� � ������ ������, � ����� �������� ��������� ������.");
         return (Guid)(await insert.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Bootstrap quest id was not returned."));
     }

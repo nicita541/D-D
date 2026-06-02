@@ -1,6 +1,19 @@
 ﻿using System.Reflection;
-using backend.Controllers;
-using backend.Controllers.Rpg;
+using backend.Infrastructure.Api;
+using backend.Modules.Ai.Api;
+using backend.Modules.Campaigns.Api;
+using backend.Modules.Changes.Api;
+using backend.Modules.Characters.Api;
+using backend.Modules.Combat.Api;
+using backend.Modules.GameStates.Api;
+using backend.Modules.Mechanics.Api;
+using backend.Modules.Memory.Api;
+using backend.Modules.Party.Api;
+using backend.Modules.Play.Api;
+using backend.Modules.Story.Api;
+using backend.Modules.Travel.Api;
+using backend.Modules.Turns.Api;
+using backend.Modules.World.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -291,7 +304,7 @@ public sealed class AllApiSurfaceContractTests
     [Fact]
     public void Ai_Context_And_Game_State_Document_Source_Are_Updated_For_New_Architecture()
     {
-        var aiContextRepository = ReadRepositoryFile("backend/backend/Repositories/Rpg/AiMasterContextRepository.cs");
+        var aiContextRepository = ReadRepositoryFile("backend/backend/Modules/Ai/Infrastructure/AiMasterContextRepository.cs");
 
         Assert.Contains("recent_rolls AS", aiContextRepository);
         Assert.Contains("recent_checks AS", aiContextRepository);

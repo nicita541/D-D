@@ -1,7 +1,7 @@
-using backend.Contracts.Auth;
+using backend.Modules.Auth.Contracts;
 using backend.Infrastructure.Auth;
-using backend.Repositories.Auth;
-using backend.Services.Auth;
+using backend.Modules.Auth.Infrastructure;
+using backend.Modules.Auth.Application;
 using Microsoft.Extensions.Options;
 
 namespace Tests.Services;

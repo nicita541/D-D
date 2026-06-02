@@ -1,4 +1,5 @@
-using backend.Contracts.Rpg.Common;
+﻿using backend.Shared.Contracts;
+using backend.Shared.Kernel;
 using Microsoft.AspNetCore.Mvc;
 
 namespace backend.Shared.Results;

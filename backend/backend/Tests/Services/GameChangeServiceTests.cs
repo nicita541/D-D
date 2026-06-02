@@ -1,6 +1,10 @@
 ﻿using System.Text.Json;
-using backend.Contracts.Rpg.Common;
-using backend.Modules.Changes;
+using backend.Shared.Contracts;
+using backend.Shared.Kernel;
+using backend.Modules.Changes.Application;
+using backend.Modules.Changes.Contracts;
+using backend.Modules.Changes.Domain;
+using backend.Modules.Changes.Infrastructure;
 using Npgsql;
 
 namespace Tests.Services;

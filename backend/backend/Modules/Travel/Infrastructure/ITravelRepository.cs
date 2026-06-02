@@ -1,7 +1,9 @@
-using System.Text.Json;
-using backend.Modules.Play;
+﻿using System.Text.Json;
+using backend.Modules.Play.Application;
+using backend.Modules.Play.Contracts;
+using backend.Modules.Play.Infrastructure;
 
-namespace backend.Modules.Travel;
+namespace backend.Modules.Travel.Infrastructure;
 
 public interface ITravelRepository
 {

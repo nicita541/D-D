@@ -1,11 +1,14 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Common;
-using backend.Modules.Play;
+using backend.Shared.Contracts;
+using backend.Shared.Kernel;
+using backend.Modules.Play.Application;
+using backend.Modules.Play.Contracts;
+using backend.Modules.Play.Infrastructure;
 using backend.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
 
-namespace backend.Modules.Travel;
+namespace backend.Modules.Travel.Infrastructure;
 
 public sealed class TravelRepository : ITravelRepository
 {

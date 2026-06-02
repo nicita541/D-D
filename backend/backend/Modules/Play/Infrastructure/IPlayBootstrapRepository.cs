@@ -1,6 +1,8 @@
-using backend.Modules.Play;
+﻿using backend.Modules.Play.Application;
+using backend.Modules.Play.Contracts;
+using backend.Modules.Play.Infrastructure;
 
-namespace backend.Modules.Play;
+namespace backend.Modules.Play.Infrastructure;
 
 public enum PlayBootstrapRepositoryStatus
 {

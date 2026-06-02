@@ -1,10 +1,26 @@
 using System.Text.Json;
-using backend.Modules.Combat;
+using backend.Modules.Combat.Application;
+using backend.Modules.Combat.Contracts;
+using backend.Modules.Combat.Domain;
+using backend.Modules.Combat.Infrastructure;
 using backend.Infrastructure.Database;
-using backend.Services.Rpg;
+using backend.Modules.Ai.Application;
+using backend.Modules.Campaigns.Application;
+using backend.Modules.Changes.Application;
+using backend.Modules.Characters.Application;
+using backend.Modules.Combat.Application;
+using backend.Modules.GameStates.Application;
+using backend.Modules.Mechanics.Application;
+using backend.Modules.Memory.Application;
+using backend.Modules.Party.Application;
+using backend.Modules.Play.Application;
+using backend.Modules.Story.Application;
+using backend.Modules.Travel.Application;
+using backend.Modules.Turns.Application;
+using backend.Modules.World.Application;
 using Npgsql;
 
-namespace backend.Modules.Combat;
+namespace backend.Modules.Combat.Infrastructure;
 
 public sealed class CombatRepository : ICombatRepository
 {
@@ -269,13 +285,13 @@ public sealed class CombatRepository : ICombatRepository
                 armorClass = target.Value.ArmorClass,
                 attackRoll = ToRollObject(attackRoll),
                 damageRoll = hit ? ToRollObject(damageRoll) : null,
-                targetParticipant = new
+                targetParticipant = new Dictionary<string, object?>
                 {
-                    id = target.Value.Id,
-                    имя = target.Value.Name,
-                    хпТекущее = newHp,
-                    хпМаксимум = target.Value.HpMax,
-                    состояния = conditions
+                    ["id"] = target.Value.Id,
+                    ["имя"] = target.Value.Name,
+                    ["хпТекущее"] = newHp,
+                    ["хпМаксимум"] = target.Value.HpMax,
+                    ["состояния"] = conditions
                 }
             });
 

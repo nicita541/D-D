@@ -1,6 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
-namespace backend.Modules.Play;
+namespace backend.Modules.Play.Contracts;
 
 public sealed record PlaySceneDto(
     string? Title,

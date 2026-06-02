@@ -1,7 +1,10 @@
 using System.Text.Json.Serialization;
-using backend.Modules.Combat;
+using backend.Modules.Combat.Application;
+using backend.Modules.Combat.Contracts;
+using backend.Modules.Combat.Domain;
+using backend.Modules.Combat.Infrastructure;
 
-namespace backend.Modules.Play;
+namespace backend.Modules.Play.Contracts;
 
 public sealed class PlayContinueRequest
 {

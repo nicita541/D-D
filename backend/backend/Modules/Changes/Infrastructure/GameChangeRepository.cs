@@ -1,12 +1,29 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Common;
+using backend.Shared.Contracts;
+using backend.Shared.Kernel;
 using backend.Infrastructure.Database;
-using backend.Modules.Changes;
-using backend.Services.Rpg;
+using backend.Modules.Changes.Application;
+using backend.Modules.Changes.Contracts;
+using backend.Modules.Changes.Domain;
+using backend.Modules.Changes.Infrastructure;
+using backend.Modules.Ai.Application;
+using backend.Modules.Campaigns.Application;
+using backend.Modules.Changes.Application;
+using backend.Modules.Characters.Application;
+using backend.Modules.Combat.Application;
+using backend.Modules.GameStates.Application;
+using backend.Modules.Mechanics.Application;
+using backend.Modules.Memory.Application;
+using backend.Modules.Party.Application;
+using backend.Modules.Play.Application;
+using backend.Modules.Story.Application;
+using backend.Modules.Travel.Application;
+using backend.Modules.Turns.Application;
+using backend.Modules.World.Application;
 using Npgsql;
 using NpgsqlTypes;
 
-namespace backend.Modules.Changes;
+namespace backend.Modules.Changes.Infrastructure;
 
 public sealed class GameChangeRepository : IGameChangeRepository
 {
@@ -225,38 +242,38 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var requestType = GetOptionalString(payload, "тип", "type") ?? "ability_check";
+        var requestType = GetOptionalString(payload, "С‚РёРї", "type") ?? "ability_check";
         if (!string.Equals(requestType, "ability_check", StringComparison.OrdinalIgnoreCase))
         {
-            throw new RpgValidationException("запросить_бросок сейчас поддерживает только тип ability_check.");
+            throw new RpgValidationException("Р·Р°РїСЂРѕСЃРёС‚СЊ_Р±СЂРѕСЃРѕРє СЃРµР№С‡Р°СЃ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ С‚РѕР»СЊРєРѕ С‚РёРї ability_check.");
         }
 
-        var ability = AbilityRules.NormalizeAbility(GetRequiredString(payload, "характеристика", "ability"));
-        var difficultyClass = GetOptionalInt(payload, "сложность", "difficultyClass")
-            ?? throw new RpgValidationException("сложность обязательна для запроса броска.");
+        var ability = AbilityRules.NormalizeAbility(GetRequiredString(payload, "С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєР°", "ability"));
+        var difficultyClass = GetOptionalInt(payload, "СЃР»РѕР¶РЅРѕСЃС‚СЊ", "difficultyClass")
+            ?? throw new RpgValidationException("СЃР»РѕР¶РЅРѕСЃС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅР° РґР»СЏ Р·Р°РїСЂРѕСЃР° Р±СЂРѕСЃРєР°.");
         if (difficultyClass < 1)
         {
-            throw new RpgValidationException("сложность должна быть больше 0.");
+            throw new RpgValidationException("СЃР»РѕР¶РЅРѕСЃС‚СЊ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ 0.");
         }
 
-        var characterId = GetOptionalGuid(payload, "персонажId", "characterId", "character_id");
+        var characterId = GetOptionalGuid(payload, "РїРµСЂСЃРѕРЅР°Р¶Id", "characterId", "character_id");
         if (characterId.HasValue)
         {
             await ValidateCharacterAsync(connection, transaction, gameStateId, characterId.Value, cancellationToken);
         }
 
-        var reason = GetOptionalString(payload, "причина", "reason") ?? string.Empty;
+        var reason = GetOptionalString(payload, "РїСЂРёС‡РёРЅР°", "reason") ?? string.Empty;
         var normalizedPayload = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
-            ["тип"] = "ability_check",
+            ["С‚РёРї"] = "ability_check",
             ["type"] = "ability_check",
-            ["персонажId"] = characterId,
+            ["РїРµСЂСЃРѕРЅР°Р¶Id"] = characterId,
             ["characterId"] = characterId,
-            ["характеристика"] = ability,
+            ["С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєР°"] = ability,
             ["ability"] = ability,
-            ["сложность"] = difficultyClass,
+            ["СЃР»РѕР¶РЅРѕСЃС‚СЊ"] = difficultyClass,
             ["difficultyClass"] = difficultyClass,
-            ["причина"] = reason,
+            ["РїСЂРёС‡РёРЅР°"] = reason,
             ["reason"] = reason
         });
 
@@ -295,7 +312,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
 
         return JsonSerializer.SerializeToElement(new
         {
-            operation = "запросить_бросок",
+            operation = "Р·Р°РїСЂРѕСЃРёС‚СЊ_Р±СЂРѕСЃРѕРє",
             mechanicRequestId = requestId,
             requestType = "ability_check",
             status = "pending"
@@ -392,7 +409,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var scene = GetOptionalElement(payload, "scene", "СЃС†РµРЅР°", "currentScene", "С‚РµРєСѓС‰Р°СЏРЎС†РµРЅР°") ?? payload;
+        var scene = GetOptionalElement(payload, "scene", "СЃС†РµРЅР°", "currentScene", "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ") ?? payload;
         if (scene.ValueKind != JsonValueKind.Object)
         {
             throw new RpgValidationException("scene РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ JSON object.");
@@ -1177,14 +1194,14 @@ public sealed class GameChangeRepository : IGameChangeRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'gameStateId', cm.game_state_id,
-                'СЂРµР·СЋРјРµ', cm.summary,
-                'С‚РµРєСѓС‰Р°СЏРЎС†РµРЅР°', cm.current_scene,
-                'РІР°Р¶РЅС‹РµР¤Р°РєС‚С‹', cm.important_facts,
-                'РѕС‚РєСЂС‹С‚С‹РµР›РёРЅРёРё', cm.open_threads,
-                'Р·Р°РєСЂС‹С‚С‹РµР›РёРЅРёРё', cm.resolved_threads,
-                'РёР·РІРµСЃС‚РЅС‹РµNpc', cm.known_npcs,
-                'РёР·РІРµСЃС‚РЅС‹РµР›РѕРєР°С†РёРё', cm.known_locations,
-                'СЃРµРєСЂРµС‚С‹РњР°СЃС‚РµСЂР°', cm.master_secrets,
+                'пїЅпїЅпїЅпїЅпїЅпїЅ', cm.summary,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.current_scene,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.important_facts,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.open_threads,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.resolved_threads,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅNpc', cm.known_npcs,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.known_locations,
+                'пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ', cm.master_secrets,
                 'updatedAt', cm.updated_at
             )::text
             FROM game.campaign_memories cm

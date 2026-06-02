@@ -1,6 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
-namespace backend.Modules.Changes;
+namespace backend.Modules.Changes.Infrastructure;
 
 public interface IGameChangeRepository
 {

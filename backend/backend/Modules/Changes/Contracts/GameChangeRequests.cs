@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace backend.Modules.Changes;
+namespace backend.Modules.Changes.Contracts;
 
 public sealed class RejectGameChangeRequest
 {
