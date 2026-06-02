@@ -44,7 +44,7 @@ public sealed class HealthController : ControllerBase
                 {
                     status = "degraded",
                     database = "error",
-                    error = "PostgreSQL РЅРµРґРѕСЃС‚СѓРїРµРЅ"
+                    error = "PostgreSQL недоступен"
                 });
         }
     }

@@ -7,20 +7,28 @@ public sealed class MojibakeGuardTests
         "Рќ",
         "Рџ",
         "Рґ",
-        "СЃ",
         "Рµ",
-        "вЂ"
+        "РЅ",
+        "СЃ",
+        "вЂ",
+        "пїЅ"
     ];
 
     [Fact]
-    public void ActiveModuleSourceFiles_DoNotContainKnownMojibakeMarkers()
+    public void ActiveModuleAndInfrastructureApiSourceFiles_DoNotContainKnownMojibakeMarkers()
     {
         var projectRoot = FindProjectRoot();
-        var modulesRoot = Path.Combine(projectRoot, "Modules");
-        var activeModules = new[] { "Play", "Travel", "Combat", "Changes" };
+        var scannedRoots = new[]
+        {
+            Path.Combine(projectRoot, "Modules", "Play"),
+            Path.Combine(projectRoot, "Modules", "Travel"),
+            Path.Combine(projectRoot, "Modules", "Combat"),
+            Path.Combine(projectRoot, "Modules", "Changes"),
+            Path.Combine(projectRoot, "Infrastructure", "Api")
+        };
 
-        var offenders = activeModules
-            .Select(module => Path.Combine(modulesRoot, module))
+        var offenders = scannedRoots
+            .Where(Directory.Exists)
             .SelectMany(path => Directory.EnumerateFiles(path, "*.cs", SearchOption.AllDirectories))
             .SelectMany(file =>
             {
