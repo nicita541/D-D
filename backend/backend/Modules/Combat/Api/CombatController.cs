@@ -30,11 +30,13 @@ namespace backend.Modules.Combat.Api;
 public sealed class CombatController : ControllerBase
 {
     private readonly ICombatService _combat;
+    private readonly ICombatOutcomeService _outcome;
     private readonly ICurrentUserService _currentUser;
 
-    public CombatController(ICombatService combat, ICurrentUserService currentUser)
+    public CombatController(ICombatService combat, ICombatOutcomeService outcome, ICurrentUserService currentUser)
     {
         _combat = combat;
+        _outcome = outcome;
         _currentUser = currentUser;
     }
 
@@ -176,5 +178,20 @@ public sealed class CombatController : ControllerBase
         {
             return BadRequest(new MessageResponse { Message = ex.Message });
         }
+    }
+
+    [HttpGet("outcome")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetOutcome(Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var result = await _outcome.GetOutcomeAsync(current.AccountId, gameStateId, cancellationToken);
+        return result.Status switch
+        {
+            RpgResultStatus.Ok => Ok(result.Value),
+            RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Активный бой не найден." }),
+            _ => StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "Сервис временно недоступен." })
+        };
     }
 }

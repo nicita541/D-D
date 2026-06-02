@@ -95,11 +95,14 @@ public static class GameChangeOperationPolicy
 
         ["create_monster"] = "create_monster",
         ["создать_монстра"] = "create_monster",
+        ["создать_монстра"] = "create_monster",
 
         ["spawn_monster"] = "spawn_monster",
         ["заспавнить_монстра"] = "spawn_monster",
+        ["заспавнить_монстра"] = "spawn_monster",
 
         ["kill_monster"] = "kill_monster",
+        ["убить_монстра"] = "kill_monster",
         ["убить_монстра"] = "kill_monster",
 
         ["add_item"] = "add_item",
@@ -171,23 +174,29 @@ public static class GameChangeOperationPolicy
 
         ["add_xp"] = "add_xp",
         ["добавить_опыт"] = "add_xp",
+        ["добавить_опыт"] = "add_xp",
 
         ["level_up"] = "level_up",
         ["повысить_уровень"] = "level_up",
 
         ["grant_reward"] = "grant_reward",
         ["выдать_награду"] = "grant_reward",
+        ["выдать_награду"] = "grant_reward",
 
         ["grant_quest_reward"] = "grant_quest_reward",
+        ["выдать_награду_квеста"] = "grant_quest_reward",
         ["выдать_награду_квеста"] = "grant_quest_reward",
 
         ["add_currency"] = "add_currency",
         ["добавить_валюту"] = "add_currency",
+        ["добавить_валюту"] = "add_currency",
 
         ["spend_currency"] = "spend_currency",
         ["потратить_валюту"] = "spend_currency",
+        ["потратить_валюту"] = "spend_currency",
 
         ["transfer_currency"] = "transfer_currency",
+        ["передать_валюту"] = "transfer_currency",
         ["передать_валюту"] = "transfer_currency",
 
         ["short_rest"] = "short_rest",
@@ -261,6 +270,15 @@ public static class GameChangeOperationPolicy
         "tick_conditions",
         "add_condition",
         "delete_condition",
+        "create_monster",
+        "spawn_monster",
+        "kill_monster",
+        "add_xp",
+        "complete_quest",
+        "grant_reward",
+        "grant_quest_reward",
+        "add_currency",
+        "spend_currency",
         "kill_character"
     };
 
@@ -291,7 +309,15 @@ public static class GameChangeOperationPolicy
         "open_location_exit",
         "close_location_exit",
         "lock_location_exit",
-        "unlock_location_exit"
+        "unlock_location_exit",
+        "create_monster",
+        "spawn_monster",
+        "kill_monster",
+        "add_xp",
+        "grant_reward",
+        "grant_quest_reward",
+        "add_currency",
+        "spend_currency"
     };
 
     public static IReadOnlyCollection<string> AllowedAiOperations => Aliases.Keys.ToArray();

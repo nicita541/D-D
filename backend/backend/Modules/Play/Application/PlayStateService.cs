@@ -12,6 +12,8 @@ using backend.Modules.Combat.Application;
 using backend.Modules.Combat.Contracts;
 using backend.Modules.Combat.Domain;
 using backend.Modules.Combat.Infrastructure;
+using backend.Modules.Economy.Application;
+using backend.Modules.World.Contracts;
 using backend.Modules.Ai.Application;
 using backend.Modules.Campaigns.Application;
 using backend.Modules.Changes.Application;
@@ -39,6 +41,8 @@ public sealed class PlayStateService : IPlayStateService
     private readonly ICampaignMemoryService _memory;
     private readonly ICombatService _combat;
     private readonly ICharacterDomainService _characterDomain;
+    private readonly IWorldService _world;
+    private readonly IEconomyService _economy;
 
     public PlayStateService(
         IGameStateService gameStates,
@@ -48,7 +52,9 @@ public sealed class PlayStateService : IPlayStateService
         IMechanicRequestService mechanicRequests,
         ICampaignMemoryService memory,
         ICombatService combat,
-        ICharacterDomainService characterDomain)
+        ICharacterDomainService characterDomain,
+        IWorldService world,
+        IEconomyService economy)
     {
         _gameStates = gameStates;
         _characters = characters;
@@ -58,6 +64,8 @@ public sealed class PlayStateService : IPlayStateService
         _memory = memory;
         _combat = combat;
         _characterDomain = characterDomain;
+        _world = world;
+        _economy = economy;
     }
 
     public async Task<RpgResult<PlayStateResponse>> BuildAsync(
@@ -81,6 +89,10 @@ public sealed class PlayStateService : IPlayStateService
 
         var selectedCharacterId = request.CharacterId ?? GetFirstCharacterId(characters);
         var inventory = await GetInventoryAsync(accountId, gameStateId, selectedCharacterId, cancellationToken);
+        var monsters = await GetMonstersAsync(accountId, gameStateId, cancellationToken);
+        var loot = await GetLootAsync(accountId, gameStateId, cancellationToken);
+        var currency = await GetCurrencyAsync(accountId, gameStateId, selectedCharacterId, cancellationToken);
+        var progression = GetProgression(characters, selectedCharacterId);
         var memoryValue = memory.Status == RpgResultStatus.Ok
             ? (JsonElement?)memory.Value
             : null;
@@ -111,9 +123,41 @@ public sealed class PlayStateService : IPlayStateService
             summary.Skipped,
             summary.Failed,
             memoryValue,
+            monsters,
+            loot,
+            Array.Empty<JsonElement>(),
+            progression,
+            currency,
             DateTimeOffset.UtcNow);
 
         return RpgResult<PlayStateResponse>.Ok(response);
+    }
+
+    private async Task<IReadOnlyList<JsonElement>> GetMonstersAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var monsters = await _world.ListAsync(accountId, gameStateId, WorldEntityKind.Monster, null, cancellationToken);
+        return monsters.Status == RpgResultStatus.Ok
+            ? monsters.Value ?? Array.Empty<JsonElement>()
+            : Array.Empty<JsonElement>();
+    }
+
+    private async Task<IReadOnlyList<JsonElement>> GetLootAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var loot = await _economy.GetLootAsync(accountId, gameStateId, cancellationToken);
+        return loot.Status == RpgResultStatus.Ok
+            ? loot.Value ?? Array.Empty<JsonElement>()
+            : Array.Empty<JsonElement>();
+    }
+
+    private async Task<JsonElement?> GetCurrencyAsync(Guid accountId, Guid gameStateId, Guid? characterId, CancellationToken cancellationToken)
+    {
+        if (!characterId.HasValue)
+        {
+            return null;
+        }
+
+        var currency = await _economy.GetCurrencyAsync(accountId, gameStateId, characterId.Value, cancellationToken);
+        return currency.Status == RpgResultStatus.Ok ? currency.Value : null;
     }
 
     private async Task<IReadOnlyList<JsonElement>> GetInventoryAsync(Guid accountId, Guid gameStateId, Guid? characterId, CancellationToken cancellationToken)
@@ -177,6 +221,34 @@ public sealed class PlayStateService : IPlayStateService
 
         value = element.GetBoolean();
         return true;
+    }
+
+    private static JsonElement? GetProgression(IReadOnlyList<JsonElement> characters, Guid? characterId)
+    {
+        if (!characterId.HasValue)
+        {
+            return null;
+        }
+
+        foreach (var character in characters)
+        {
+            if (character.ValueKind != JsonValueKind.Object
+                || !character.TryGetProperty("id", out var id)
+                || id.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(id.GetString(), out var parsedId)
+                || parsedId != characterId.Value)
+            {
+                continue;
+            }
+
+            if (character.TryGetProperty("progression", out var progression)
+                || character.TryGetProperty("прогресс", out progression))
+            {
+                return progression.Clone();
+            }
+        }
+
+        return null;
     }
 
     private static Guid? GetFirstCharacterId(IReadOnlyList<JsonElement> characters)

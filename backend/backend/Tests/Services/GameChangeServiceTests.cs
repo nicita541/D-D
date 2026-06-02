@@ -30,7 +30,7 @@ public sealed class GameChangeServiceTests
         var context = CreateFakeContext();
 
         var ex = await Assert.ThrowsAsync<RpgValidationException>(() =>
-            dispatcher.DispatchAsync(context, "spawn_monster", JsonSerializer.SerializeToElement(new { }), CancellationToken.None));
+            dispatcher.DispatchAsync(context, "transfer_currency", JsonSerializer.SerializeToElement(new { }), CancellationToken.None));
 
         Assert.Contains("Unsupported change operation", ex.Message);
     }

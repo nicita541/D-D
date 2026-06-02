@@ -327,6 +327,9 @@ public sealed class CombatRepository : ICombatRepository
                                 'хпТекущее', p.hp_current,
                                 'хпМаксимум', p.hp_max,
                                 'классДоспеха', p.armor_class,
+                                'isEnemy', p.is_enemy,
+                                'xpReward', p.xp_reward,
+                                'currencyReward', p.currency_reward,
                                 'ужеДействовал', p.has_acted,
                                 'состояния', p.conditions
                             ) ORDER BY p.initiative DESC, p.created_at ASC, p.id ASC
@@ -407,13 +410,27 @@ public sealed class CombatRepository : ICombatRepository
         AddCombatParticipantRequest request,
         CancellationToken cancellationToken)
     {
-        var actorType = NormalizeActorType(request.ActorType);
-        await ValidateParticipantActorAsync(connection, transaction, gameStateId, actorType, request.ActorId, cancellationToken);
+        var actorType = NormalizeActorType(request.ResolvedActorType);
+        var actorId = request.ResolvedActorId;
+        await ValidateParticipantActorAsync(connection, transaction, gameStateId, actorType, actorId, cancellationToken);
+        var monster = actorType == "monster"
+            ? await GetMonsterParticipantDefaultsAsync(connection, transaction, gameStateId, actorId, cancellationToken)
+            : null;
 
         if (request.ResolvedArmorClass < 0)
         {
             throw new CombatValidationException("классДоспеха должен быть 0 или больше.");
         }
+
+        var name = string.IsNullOrWhiteSpace(request.Name)
+            ? monster?.Name ?? "Безымянный"
+            : request.Name.Trim();
+        var hpMax = request.HpMax > 0 ? request.HpMax : monster?.HpMax ?? 0;
+        var hpCurrent = request.HpCurrent > 0 ? request.HpCurrent : monster?.HpCurrent ?? hpMax;
+        var armorClass = request.ArmorClassRu ?? request.ArmorClass ?? monster?.ArmorClass ?? 10;
+        var isEnemy = request.ResolvedIsEnemy ?? actorType == "monster";
+        var xpReward = request.ResolvedXpReward > 0 ? request.ResolvedXpReward : monster?.XpReward ?? 0;
+        var currencyReward = request.ResolvedCurrencyReward > 0 ? request.ResolvedCurrencyReward : monster?.CurrencyReward ?? 0;
 
         const string sql = """
             INSERT INTO game.combat_participants
@@ -429,6 +446,9 @@ public sealed class CombatRepository : ICombatRepository
                 hp_max,
                 has_acted,
                 armor_class,
+                is_enemy,
+                xp_reward,
+                currency_reward,
                 conditions
             )
             VALUES
@@ -444,6 +464,9 @@ public sealed class CombatRepository : ICombatRepository
                 @hpMax,
                 false,
                 @armorClass,
+                @isEnemy,
+                @xpReward,
+                @currencyReward,
                 @conditions::jsonb
             )
             RETURNING id;
@@ -453,12 +476,15 @@ public sealed class CombatRepository : ICombatRepository
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("combatId", combatId);
         command.Parameters.AddWithValue("actorType", actorType);
-        command.Parameters.AddWithValue("actorId", request.ActorId);
-        command.Parameters.AddWithValue("name", string.IsNullOrWhiteSpace(request.Name) ? "Безымянный" : request.Name.Trim());
+        command.Parameters.AddWithValue("actorId", actorId);
+        command.Parameters.AddWithValue("name", name);
         command.Parameters.AddWithValue("initiative", request.Initiative);
-        command.Parameters.AddWithValue("hpCurrent", Math.Max(0, request.HpCurrent));
-        command.Parameters.AddWithValue("hpMax", Math.Max(0, request.HpMax));
-        command.Parameters.AddWithValue("armorClass", request.ResolvedArmorClass);
+        command.Parameters.AddWithValue("hpCurrent", Math.Max(0, hpCurrent));
+        command.Parameters.AddWithValue("hpMax", Math.Max(0, hpMax));
+        command.Parameters.AddWithValue("armorClass", Math.Max(0, armorClass));
+        command.Parameters.AddWithValue("isEnemy", isEnemy);
+        command.Parameters.AddWithValue("xpReward", xpReward);
+        command.Parameters.AddWithValue("currencyReward", currencyReward);
         command.Parameters.AddJsonb("conditions", request.Conditions);
 
         return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
@@ -525,6 +551,41 @@ public sealed class CombatRepository : ICombatRepository
             _ => "Актёр для участника боя не найден."
         };
         throw new CombatValidationException(message);
+    }
+
+    private static async Task<MonsterParticipantDefaults?> GetMonsterParticipantDefaultsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        Guid monsterId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT name,
+                   hp_current,
+                   hp_max,
+                   armor_class,
+                   COALESCE(xp_reward, 0),
+                   COALESCE(currency_reward, 0)
+            FROM game.monsters
+            WHERE game_state_id = @gameStateId
+              AND id = @monsterId
+            LIMIT 1;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("monsterId", monsterId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new MonsterParticipantDefaults(
+                reader.GetString(0),
+                reader.GetInt32(1),
+                reader.GetInt32(2),
+                reader.GetInt32(3),
+                reader.GetInt32(4),
+                reader.GetInt32(5))
+            : null;
     }
 
     private static async Task<ActiveCombat?> GetActiveCombatForUpdateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
@@ -692,4 +753,6 @@ public sealed class CombatRepository : ICombatRepository
     private readonly record struct ActiveCombat(Guid Id, Guid? CurrentParticipantId, int RoundNumber);
 
     private readonly record struct CombatParticipantRow(Guid Id, string Name, int HpCurrent, int HpMax, int ArmorClass, IReadOnlyList<string> Conditions);
+
+    private readonly record struct MonsterParticipantDefaults(string Name, int HpCurrent, int HpMax, int ArmorClass, int XpReward, int CurrencyReward);
 }

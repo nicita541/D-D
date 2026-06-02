@@ -228,6 +228,15 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "unlock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: false, cancellationToken),
             "close_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
             "lock_location_exit" => await SetLocationExitLockedAsync(connection, transaction, gameStateId, payload, isLocked: true, cancellationToken),
+            "create_monster" => await CreateMonsterAsync(connection, transaction, gameStateId, payload, spawn: false, cancellationToken),
+            "spawn_monster" => await CreateMonsterAsync(connection, transaction, gameStateId, payload, spawn: true, cancellationToken),
+            "kill_monster" => await KillMonsterAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "add_xp" => await AddXpAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "add_currency" => await AddCurrencyAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "spend_currency" => await SpendCurrencyAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "complete_quest" => await CompleteQuestAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "grant_reward" => await GrantQuestRewardAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "grant_quest_reward" => await GrantQuestRewardAsync(connection, transaction, gameStateId, payload, cancellationToken),
             _ => throw new RpgValidationException($"Unsupported change operation: {operation}.")
         };
     }
@@ -1119,6 +1128,326 @@ public sealed class GameChangeRepository : IGameChangeRepository
         }
 
         return JsonSerializer.SerializeToElement(new { operation = "переместить_предмет", itemId, ownerKind, ownerId });
+    }
+
+    private static async Task<JsonElement> CreateMonsterAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, bool spawn, CancellationToken cancellationToken)
+    {
+        var locationId = GetOptionalGuid(payload, "locationId", "location_id", "локацияId");
+        if (locationId.HasValue)
+        {
+            await ValidateEntityAsync(connection, transaction, "game.locations", gameStateId, locationId.Value, "Location was not found.", cancellationToken);
+        }
+
+        const string sql = """
+            INSERT INTO game.monsters
+            (
+                game_state_id,
+                location_id,
+                name,
+                monster_type,
+                description,
+                hp_current,
+                hp_max,
+                armor_class,
+                initiative_bonus,
+                is_alive,
+                status,
+                xp_reward,
+                currency_reward,
+                stats,
+                abilities,
+                loot,
+                tags
+            )
+            VALUES
+            (
+                @gameStateId,
+                @locationId,
+                @name,
+                @monsterType,
+                @description,
+                @hpCurrent,
+                @hpMax,
+                @armorClass,
+                @initiativeBonus,
+                true,
+                'alive',
+                @xpReward,
+                @currencyReward,
+                @stats::jsonb,
+                @abilities::jsonb,
+                @loot::jsonb,
+                @tags::jsonb
+            )
+            RETURNING id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("locationId", locationId.HasValue ? locationId.Value : DBNull.Value);
+        command.Parameters.AddWithValue("name", GetRequiredString(payload, "name", "название"));
+        command.Parameters.AddWithValue("monsterType", DbString(GetOptionalString(payload, "monsterType", "monster_type", "тип")));
+        command.Parameters.AddWithValue("description", DbString(GetOptionalString(payload, "description", "описание")));
+        var hpMax = Math.Max(1, GetOptionalInt(payload, "hpMax", "hp_max", "хпМаксимум") ?? 1);
+        command.Parameters.AddWithValue("hpMax", hpMax);
+        command.Parameters.AddWithValue("hpCurrent", Math.Max(0, GetOptionalInt(payload, "hpCurrent", "hp_current", "хпТекущее") ?? hpMax));
+        command.Parameters.AddWithValue("armorClass", Math.Max(0, GetOptionalInt(payload, "armorClass", "armor_class", "классДоспеха") ?? 10));
+        command.Parameters.AddWithValue("initiativeBonus", GetOptionalInt(payload, "initiativeBonus", "initiative_bonus", "инициатива") ?? 0);
+        command.Parameters.AddWithValue("xpReward", Math.Max(0, GetOptionalInt(payload, "xpReward", "xp_reward", "опытНаграда") ?? 0));
+        command.Parameters.AddWithValue("currencyReward", Math.Max(0, GetOptionalInt(payload, "currencyReward", "currency_reward", "золотоНаграда") ?? 0));
+        AddJsonb(command, "stats", GetOptionalElement(payload, "stats", "статы")?.GetRawText() ?? "{}");
+        AddJsonb(command, "abilities", GetOptionalElement(payload, "abilities", "способности")?.GetRawText() ?? "[]");
+        AddJsonb(command, "loot", GetOptionalElement(payload, "loot", "добыча")?.GetRawText() ?? "[]");
+        AddJsonb(command, "tags", GetOptionalElement(payload, "tags", "теги")?.GetRawText() ?? "[]");
+
+        var monsterId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Monster id was not returned."));
+        return JsonSerializer.SerializeToElement(new { operation = spawn ? "spawn_monster" : "create_monster", monsterId });
+    }
+
+    private static async Task<JsonElement> KillMonsterAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var monsterId = GetRequiredGuid(payload, "monsterId", "monster_id", "монстрId");
+        const string sql = """
+            UPDATE game.monsters
+            SET hp_current = 0,
+                is_alive = false,
+                status = 'dead',
+                updated_at = now()
+            WHERE game_state_id = @gameStateId
+              AND id = @monsterId;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("monsterId", monsterId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            throw new RpgValidationException("Monster was not found.");
+        }
+
+        return JsonSerializer.SerializeToElement(new { operation = "kill_monster", monsterId });
+    }
+
+    private static async Task<JsonElement> AddXpAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        var amount = GetOptionalInt(payload, "amount", "xpAmount", "опыт") ?? throw new RpgValidationException("amount is required.");
+        if (amount <= 0)
+        {
+            throw new RpgValidationException("amount must be greater than 0.");
+        }
+
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        const string sql = """
+            UPDATE game.player_progression
+            SET experience = experience + @amount
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId
+            RETURNING experience, level, experience_to_next_level;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("amount", amount);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new RpgValidationException("Character progression was not found.");
+        }
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "add_xp",
+            characterId,
+            addedXp = amount,
+            totalXp = reader.GetInt32(0),
+            level = reader.GetInt32(1),
+            experienceToNextLevel = reader.GetInt32(2)
+        });
+    }
+
+    private static async Task<JsonElement> AddCurrencyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        var amount = GetOptionalInt(payload, "amount", "currencyAmount", "золото") ?? throw new RpgValidationException("amount is required.");
+        if (amount <= 0)
+        {
+            throw new RpgValidationException("amount must be greater than 0.");
+        }
+
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        await EnsureWealthAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        const string sql = """
+            UPDATE game.wealth
+            SET gold = gold + @amount
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId
+            RETURNING gold;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("amount", amount);
+        var total = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken) ?? 0);
+        return JsonSerializer.SerializeToElement(new { operation = "add_currency", characterId, addedGold = amount, gold = total });
+    }
+
+    private static async Task<JsonElement> SpendCurrencyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        var amount = GetOptionalInt(payload, "amount", "currencyAmount", "золото") ?? throw new RpgValidationException("amount is required.");
+        if (amount <= 0)
+        {
+            throw new RpgValidationException("amount must be greater than 0.");
+        }
+
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        await EnsureWealthAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        const string sql = """
+            UPDATE game.wealth
+            SET gold = gold - @amount
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId
+              AND gold >= @amount
+            RETURNING gold;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("amount", amount);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null or DBNull)
+        {
+            throw new RpgValidationException("Not enough gold.");
+        }
+
+        return JsonSerializer.SerializeToElement(new { operation = "spend_currency", characterId, spentGold = amount, gold = Convert.ToInt32(value) });
+    }
+
+    private static async Task<JsonElement> CompleteQuestAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var questId = GetRequiredGuid(payload, "questId", "quest_id", "квестId");
+        const string sql = """
+            UPDATE game.quests
+            SET status = 'completed'
+            WHERE game_state_id = @gameStateId
+              AND id = @questId
+            RETURNING title;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("questId", questId);
+        var title = await command.ExecuteScalarAsync(cancellationToken);
+        if (title is null or DBNull)
+        {
+            throw new RpgValidationException("Quest was not found.");
+        }
+
+        return JsonSerializer.SerializeToElement(new { operation = "complete_quest", questId, title = title.ToString(), status = "completed" });
+    }
+
+    private static async Task<JsonElement> GrantQuestRewardAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var questId = GetRequiredGuid(payload, "questId", "quest_id", "квестId");
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+
+        if (await QuestRewardAlreadyGrantedAsync(connection, transaction, gameStateId, questId, cancellationToken))
+        {
+            throw new RpgValidationException("Quest reward was already granted.");
+        }
+
+        var (defaultXp, defaultGold) = await GetQuestRewardDefaultsAsync(connection, transaction, gameStateId, questId, cancellationToken);
+        var xp = Math.Max(0, GetOptionalInt(payload, "xpAmount", "amount", "опыт") ?? defaultXp);
+        var gold = Math.Max(0, GetOptionalInt(payload, "currencyAmount", "gold", "золото") ?? defaultGold);
+
+        if (xp > 0)
+        {
+            await AddXpAsync(connection, transaction, gameStateId, JsonSerializer.SerializeToElement(new { characterId, amount = xp }), cancellationToken);
+        }
+
+        if (gold > 0)
+        {
+            await AddCurrencyAsync(connection, transaction, gameStateId, JsonSerializer.SerializeToElement(new { characterId, amount = gold }), cancellationToken);
+        }
+
+        const string sql = """
+            INSERT INTO game.quest_rewards
+            (
+                game_state_id,
+                quest_id,
+                xp_amount,
+                currency_amount,
+                items,
+                granted_at,
+                granted_to_character_id
+            )
+            VALUES
+            (
+                @gameStateId,
+                @questId,
+                @xp,
+                @gold,
+                COALESCE(@items, '[]'::jsonb),
+                now(),
+                @characterId
+            )
+            RETURNING id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("questId", questId);
+        command.Parameters.AddWithValue("xp", xp);
+        command.Parameters.AddWithValue("gold", gold);
+        AddJsonb(command, "items", GetOptionalElement(payload, "items", "предметы")?.GetRawText() ?? "[]");
+        command.Parameters.AddWithValue("characterId", characterId);
+        var rewardId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Quest reward id was not returned."));
+        return JsonSerializer.SerializeToElement(new { operation = "grant_quest_reward", rewardId, questId, characterId, xpAdded = xp, currencyAdded = gold });
+    }
+
+    private static async Task EnsureWealthAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO game.wealth (player_id, game_state_id, copper, silver, gold, platinum)
+            VALUES (@characterId, @gameStateId, 0, 0, 0, 0)
+            ON CONFLICT (player_id) DO NOTHING;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<bool> QuestRewardAlreadyGrantedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid questId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT EXISTS (SELECT 1 FROM game.quest_rewards WHERE game_state_id = @gameStateId AND quest_id = @questId AND granted_at IS NOT NULL);";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("questId", questId);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task<(int Xp, int Gold)> GetQuestRewardDefaultsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid questId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT reward_experience, reward_gold FROM game.quests WHERE game_state_id = @gameStateId AND id = @questId;";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("questId", questId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new RpgValidationException("Quest was not found.");
+        }
+
+        return (reader.GetInt32(0), reader.GetInt32(1));
     }
 
     private static async Task MarkAppliedAsync(

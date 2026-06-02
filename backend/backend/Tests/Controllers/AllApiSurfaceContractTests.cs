@@ -243,6 +243,7 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/play/combat/action",
             "POST api/game-states/{gameStateId:guid}/play/combat/end",
             "POST api/game-states/{gameStateId:guid}/play/combat/continue",
+            "POST api/game-states/{gameStateId:guid}/play/combat/resolve-outcome",
             "POST api/game-states/{gameStateId:guid}/play/summarize",
             "POST api/game-states/{gameStateId:guid}/play/bootstrap",
             "GET api/game-states/{gameStateId:guid}/travel/options",
@@ -269,6 +270,11 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/changes/{changeId:guid}/apply",
             "POST api/game-states/{gameStateId:guid}/changes/{changeId:guid}/reject",
 
+            "GET api/game-states/{gameStateId:guid}/loot",
+            "POST api/game-states/{gameStateId:guid}/loot",
+            "GET api/game-states/{gameStateId:guid}/loot/{lootContainerId:guid}",
+            "POST api/game-states/{gameStateId:guid}/loot/{lootContainerId:guid}/claim",
+
             "GET api/game-states/{gameStateId:guid}/turns",
             "POST api/game-states/{gameStateId:guid}/turns",
             "GET api/game-states/{gameStateId:guid}/turns/{turnId:guid}",
@@ -280,7 +286,14 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/world/quests",
             "POST api/game-states/{gameStateId:guid}/world/monsters",
 
+            "GET api/game-states/{gameStateId:guid}/monsters",
+            "POST api/game-states/{gameStateId:guid}/monsters",
+            "GET api/game-states/{gameStateId:guid}/monsters/{monsterId:guid}",
+            "POST api/game-states/{gameStateId:guid}/monsters/spawn",
+            "POST api/game-states/{gameStateId:guid}/monsters/{monsterId:guid}/kill",
+
             "GET api/game-states/{gameStateId:guid}/combat",
+            "GET api/game-states/{gameStateId:guid}/combat/outcome",
             "POST api/game-states/{gameStateId:guid}/combat/start",
             "POST api/game-states/{gameStateId:guid}/combat/participants",
             "POST api/game-states/{gameStateId:guid}/combat/next-turn",
@@ -290,7 +303,13 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/combat/end",
 
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/experience",
-            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up"
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/xp",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up",
+            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency/add",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency/spend",
+            "POST api/game-states/{gameStateId:guid}/quests/{questId:guid}/complete",
+            "POST api/game-states/{gameStateId:guid}/quests/{questId:guid}/rewards/grant"
         };
 
         var missing = required

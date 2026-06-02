@@ -151,6 +151,68 @@ public sealed class AddCombatParticipantRequest
 
     [JsonIgnore]
     public int ResolvedArmorClass => ArmorClassRu ?? ArmorClass ?? 10;
+
+    [JsonPropertyName("monsterId")]
+    public Guid? MonsterId { get; set; }
+
+    [JsonPropertyName("монстрId")]
+    public Guid? MonsterIdRu { get; set; }
+
+    [JsonPropertyName("isEnemy")]
+    public bool? IsEnemy { get; set; }
+
+    [JsonPropertyName("враг")]
+    public bool? IsEnemyRu { get; set; }
+
+    [JsonPropertyName("xpReward")]
+    public int? XpReward { get; set; }
+
+    [JsonPropertyName("опытНаграда")]
+    public int? XpRewardRu { get; set; }
+
+    [JsonPropertyName("currencyReward")]
+    public int? CurrencyReward { get; set; }
+
+    [JsonPropertyName("золотоНаграда")]
+    public int? CurrencyRewardRu { get; set; }
+
+    [JsonIgnore]
+    public Guid ResolvedActorId => MonsterIdRu ?? MonsterId ?? ActorId;
+
+    [JsonIgnore]
+    public string ResolvedActorType => (MonsterIdRu ?? MonsterId).HasValue ? "monster" : ActorType;
+
+    [JsonIgnore]
+    public bool? ResolvedIsEnemy => IsEnemyRu ?? IsEnemy;
+
+    [JsonIgnore]
+    public int ResolvedXpReward => Math.Max(0, XpRewardRu ?? XpReward ?? 0);
+
+    [JsonIgnore]
+    public int ResolvedCurrencyReward => Math.Max(0, CurrencyRewardRu ?? CurrencyReward ?? 0);
+}
+
+public sealed class PlayCombatResolveOutcomeRequest
+{
+    [JsonPropertyName("autoGrantRewards")]
+    public bool? AutoGrantRewards { get; set; }
+
+    [JsonPropertyName("выдатьНаграды")]
+    public bool? AutoGrantRewardsRu { get; set; }
+
+    [JsonPropertyName("note")]
+    public string? Note { get; set; }
+
+    [JsonPropertyName("заметка")]
+    public string? NoteRu { get; set; }
+
+    [JsonIgnore]
+    public bool ResolvedAutoGrantRewards => AutoGrantRewardsRu ?? AutoGrantRewards ?? true;
+
+    [JsonIgnore]
+    public string ResolvedNote => string.IsNullOrWhiteSpace(NoteRu)
+        ? Note?.Trim() ?? string.Empty
+        : NoteRu.Trim();
 }
 
 public sealed class ApplyCombatDamageRequest

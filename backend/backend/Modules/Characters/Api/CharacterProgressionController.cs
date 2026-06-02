@@ -45,6 +45,16 @@ public sealed class CharacterProgressionController : ControllerBase
         return ToActionResult(await _progression.AddExperienceAsync(current.AccountId, gameStateId, characterId, request ?? new AddExperienceRequest(), cancellationToken));
     }
 
+    [HttpPost("xp")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> AddXp(Guid gameStateId, Guid characterId, [FromBody] AddExperienceRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        return ToActionResult(await _progression.AddExperienceAsync(current.AccountId, gameStateId, characterId, request ?? new AddExperienceRequest(), cancellationToken));
+    }
+
     [HttpPost("level-up")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -187,7 +187,7 @@ public sealed class WorldRepository : IWorldRepository
             ORDER BY s.sort_order, s.id;
         """,
         WorldEntityKind.Monster => """
-            SELECT jsonb_build_object('id', m.id, 'gameStateId', m.game_state_id, 'locationId', m.location_id, 'name', m.name, 'monsterType', m.monster_type, 'description', m.description, 'hpCurrent', m.hp_current, 'hpMax', m.hp_max, 'armorClass', m.armor_class, 'initiativeBonus', m.initiative_bonus, 'isAlive', m.is_alive, 'stats', m.stats, 'abilities', m.abilities, 'loot', m.loot, 'tags', m.tags, 'createdAt', m.created_at, 'updatedAt', m.updated_at)::text
+            SELECT jsonb_build_object('id', m.id, 'gameStateId', m.game_state_id, 'locationId', m.location_id, 'name', m.name, 'monsterType', m.monster_type, 'description', m.description, 'hpCurrent', m.hp_current, 'hpMax', m.hp_max, 'armorClass', m.armor_class, 'initiativeBonus', m.initiative_bonus, 'isAlive', m.is_alive, 'status', COALESCE(m.status, CASE WHEN m.is_alive THEN 'alive' ELSE 'dead' END), 'xpReward', COALESCE(m.xp_reward, 0), 'currencyReward', COALESCE(m.currency_reward, 0), 'stats', m.stats, 'abilities', m.abilities, 'loot', m.loot, 'tags', m.tags, 'createdAt', m.created_at, 'updatedAt', m.updated_at)::text
             FROM game.monsters m
             WHERE m.game_state_id = @gameStateId
             ORDER BY m.name, m.id;
@@ -205,7 +205,7 @@ public sealed class WorldRepository : IWorldRepository
         WorldEntityKind.Faction => "SELECT jsonb_build_object('id', f.id, 'gameStateId', f.game_state_id, 'name', f.name, 'reputation', f.reputation, 'description', f.description)::text FROM game.factions f WHERE f.game_state_id = @gameStateId AND f.id = @entityId LIMIT 1;",
         WorldEntityKind.Quest => "SELECT jsonb_build_object('id', q.id, 'gameStateId', q.game_state_id, 'title', q.title, 'description', q.description, 'status', q.status, 'rewardExperience', q.reward_experience, 'rewardCopper', q.reward_copper, 'rewardSilver', q.reward_silver, 'rewardGold', q.reward_gold, 'rewardPlatinum', q.reward_platinum)::text FROM game.quests q WHERE q.game_state_id = @gameStateId AND q.id = @entityId LIMIT 1;",
         WorldEntityKind.QuestStep => "SELECT jsonb_build_object('id', s.id, 'gameStateId', s.game_state_id, 'questId', s.quest_id, 'description', s.description, 'isCompleted', s.is_completed, 'sortOrder', s.sort_order)::text FROM game.quest_steps s WHERE s.game_state_id = @gameStateId AND s.quest_id = @parentId AND s.id = @entityId LIMIT 1;",
-        WorldEntityKind.Monster => "SELECT jsonb_build_object('id', m.id, 'gameStateId', m.game_state_id, 'locationId', m.location_id, 'name', m.name, 'monsterType', m.monster_type, 'description', m.description, 'hpCurrent', m.hp_current, 'hpMax', m.hp_max, 'armorClass', m.armor_class, 'initiativeBonus', m.initiative_bonus, 'isAlive', m.is_alive, 'stats', m.stats, 'abilities', m.abilities, 'loot', m.loot, 'tags', m.tags, 'createdAt', m.created_at, 'updatedAt', m.updated_at)::text FROM game.monsters m WHERE m.game_state_id = @gameStateId AND m.id = @entityId LIMIT 1;",
+        WorldEntityKind.Monster => "SELECT jsonb_build_object('id', m.id, 'gameStateId', m.game_state_id, 'locationId', m.location_id, 'name', m.name, 'monsterType', m.monster_type, 'description', m.description, 'hpCurrent', m.hp_current, 'hpMax', m.hp_max, 'armorClass', m.armor_class, 'initiativeBonus', m.initiative_bonus, 'isAlive', m.is_alive, 'status', COALESCE(m.status, CASE WHEN m.is_alive THEN 'alive' ELSE 'dead' END), 'xpReward', COALESCE(m.xp_reward, 0), 'currencyReward', COALESCE(m.currency_reward, 0), 'stats', m.stats, 'abilities', m.abilities, 'loot', m.loot, 'tags', m.tags, 'createdAt', m.created_at, 'updatedAt', m.updated_at)::text FROM game.monsters m WHERE m.game_state_id = @gameStateId AND m.id = @entityId LIMIT 1;",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
@@ -252,8 +252,8 @@ public sealed class WorldRepository : IWorldRepository
             RETURNING id;
         """,
         WorldEntityKind.Monster => """
-            INSERT INTO game.monsters (game_state_id, location_id, name, monster_type, description, hp_current, hp_max, armor_class, initiative_bonus, is_alive, stats, abilities, loot, tags)
-            VALUES (@gameStateId, @locationId, @name, @monsterType, @description, COALESCE(@hpCurrent, 1), COALESCE(@hpMax, 1), COALESCE(@armorClass, 10), COALESCE(@initiativeBonus, 0), COALESCE(@isAlive, true), COALESCE(@stats, '{}'::jsonb), COALESCE(@abilities, '[]'::jsonb), COALESCE(@loot, '[]'::jsonb), COALESCE(@tags, '[]'::jsonb))
+            INSERT INTO game.monsters (game_state_id, location_id, name, monster_type, description, hp_current, hp_max, armor_class, initiative_bonus, is_alive, status, xp_reward, currency_reward, stats, abilities, loot, tags)
+            VALUES (@gameStateId, @locationId, @name, @monsterType, @description, COALESCE(@hpCurrent, 1), COALESCE(@hpMax, 1), COALESCE(@armorClass, 10), COALESCE(@initiativeBonus, 0), COALESCE(@isAlive, true), COALESCE(@status, CASE WHEN COALESCE(@isAlive, true) THEN 'alive' ELSE 'dead' END), COALESCE(@xpReward, 0), COALESCE(@currencyReward, 0), COALESCE(@stats, '{}'::jsonb), COALESCE(@abilities, '[]'::jsonb), COALESCE(@loot, '[]'::jsonb), COALESCE(@tags, '[]'::jsonb))
             RETURNING id;
         """,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
@@ -341,6 +341,9 @@ public sealed class WorldRepository : IWorldRepository
                 armor_class = COALESCE(@armorClass, armor_class),
                 initiative_bonus = COALESCE(@initiativeBonus, initiative_bonus),
                 is_alive = COALESCE(@isAlive, is_alive),
+                status = COALESCE(@status, status),
+                xp_reward = COALESCE(@xpReward, xp_reward),
+                currency_reward = COALESCE(@currencyReward, currency_reward),
                 stats = COALESCE(@stats, stats),
                 abilities = COALESCE(@abilities, abilities),
                 loot = COALESCE(@loot, loot),
@@ -442,6 +445,9 @@ public sealed class WorldRepository : IWorldRepository
         command.Parameters.AddWithValue("hpMax", DbInt(GetOptionalInt(payload, "hpMax", "hp_max", "хпМаксимум")));
         command.Parameters.AddWithValue("armorClass", DbInt(GetOptionalInt(payload, "armorClass", "armor_class", "классДоспеха")));
         command.Parameters.AddWithValue("initiativeBonus", DbInt(GetOptionalInt(payload, "initiativeBonus", "initiative_bonus", "инициатива")));
+        command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "статус")));
+        command.Parameters.AddWithValue("xpReward", DbInt(GetOptionalInt(payload, "xpReward", "xp_reward", "rewardExperience", "опытНаграда")));
+        command.Parameters.AddWithValue("currencyReward", DbInt(GetOptionalInt(payload, "currencyReward", "currency_reward", "rewardGold", "золотоНаграда")));
         AddJsonb(command, "stats", GetOptionalElement(payload, "stats", "статы")?.GetRawText());
         AddJsonb(command, "abilities", GetOptionalElement(payload, "abilities", "способности")?.GetRawText());
         AddJsonb(command, "loot", GetOptionalElement(payload, "loot", "добыча")?.GetRawText());

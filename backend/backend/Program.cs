@@ -5,6 +5,7 @@ using backend.Modules.Campaigns.DependencyInjection;
 using backend.Modules.Characters.DependencyInjection;
 using backend.Modules.Changes.DependencyInjection;
 using backend.Modules.Combat.DependencyInjection;
+using backend.Modules.Economy.DependencyInjection;
 using backend.Modules.GameStates.DependencyInjection;
 using backend.Modules.Mechanics.DependencyInjection;
 using backend.Modules.Memory.DependencyInjection;
@@ -31,6 +32,7 @@ namespace backend
             builder.Services.AddWorldModule();
             builder.Services.AddTravelModule();
             builder.Services.AddCombatModule();
+            builder.Services.AddEconomyModule();
             builder.Services.AddChangesModule();
             builder.Services.AddTurnsModule();
             builder.Services.AddMechanicsModule();

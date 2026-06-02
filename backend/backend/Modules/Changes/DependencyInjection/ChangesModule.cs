@@ -36,6 +36,15 @@ public static class ChangesModule
         services.AddScoped<IGameChangeHandler, CloseLocationExitChangeHandler>();
         services.AddScoped<IGameChangeHandler, LockLocationExitChangeHandler>();
         services.AddScoped<IGameChangeHandler, UnlockLocationExitChangeHandler>();
+        services.AddScoped<IGameChangeHandler, CreateMonsterChangeHandler>();
+        services.AddScoped<IGameChangeHandler, SpawnMonsterChangeHandler>();
+        services.AddScoped<IGameChangeHandler, KillMonsterChangeHandler>();
+        services.AddScoped<IGameChangeHandler, AddXpChangeHandler>();
+        services.AddScoped<IGameChangeHandler, AddCurrencyChangeHandler>();
+        services.AddScoped<IGameChangeHandler, SpendCurrencyChangeHandler>();
+        services.AddScoped<IGameChangeHandler, CompleteQuestChangeHandler>();
+        services.AddScoped<IGameChangeHandler, GrantRewardChangeHandler>();
+        services.AddScoped<IGameChangeHandler, GrantQuestRewardChangeHandler>();
 
         return services;
     }

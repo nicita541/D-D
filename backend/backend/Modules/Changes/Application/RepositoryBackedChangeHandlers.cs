@@ -51,3 +51,12 @@ public sealed class CloseLocationExitChangeHandler() : RepositoryBackedChangeHan
 public sealed class LockLocationExitChangeHandler() : RepositoryBackedChangeHandlerBase("lock_location_exit", GameChangeOperationClass.Dangerous, true);
 
 public sealed class UnlockLocationExitChangeHandler() : RepositoryBackedChangeHandlerBase("unlock_location_exit", GameChangeOperationClass.Dangerous, true);
+public sealed class CreateMonsterChangeHandler() : RepositoryBackedChangeHandlerBase("create_monster", GameChangeOperationClass.Dangerous, true);
+public sealed class SpawnMonsterChangeHandler() : RepositoryBackedChangeHandlerBase("spawn_monster", GameChangeOperationClass.Dangerous, true);
+public sealed class KillMonsterChangeHandler() : RepositoryBackedChangeHandlerBase("kill_monster", GameChangeOperationClass.Dangerous, true);
+public sealed class AddXpChangeHandler() : RepositoryBackedChangeHandlerBase("add_xp", GameChangeOperationClass.Dangerous, true);
+public sealed class AddCurrencyChangeHandler() : RepositoryBackedChangeHandlerBase("add_currency", GameChangeOperationClass.Dangerous, true);
+public sealed class SpendCurrencyChangeHandler() : RepositoryBackedChangeHandlerBase("spend_currency", GameChangeOperationClass.Dangerous, true);
+public sealed class CompleteQuestChangeHandler() : RepositoryBackedChangeHandlerBase("complete_quest", GameChangeOperationClass.Dangerous, true);
+public sealed class GrantRewardChangeHandler() : RepositoryBackedChangeHandlerBase("grant_reward", GameChangeOperationClass.Dangerous, true);
+public sealed class GrantQuestRewardChangeHandler() : RepositoryBackedChangeHandlerBase("grant_quest_reward", GameChangeOperationClass.Dangerous, true);

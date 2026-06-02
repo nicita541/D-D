@@ -53,4 +53,9 @@ public sealed record PlayStateResponse(
     IReadOnlyList<PlayChangeApplicationItem> SkippedChanges,
     IReadOnlyList<PlayChangeApplicationItem> FailedChanges,
     JsonElement? Memory,
+    IReadOnlyList<JsonElement> Monsters,
+    IReadOnlyList<JsonElement> Loot,
+    IReadOnlyList<JsonElement> Rewards,
+    JsonElement? Progression,
+    JsonElement? Currency,
     DateTimeOffset GeneratedAt);

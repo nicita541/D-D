@@ -31,17 +31,20 @@ public sealed class PlayCombatFacade : IPlayCombatFacade
         """;
 
     private readonly ICombatService _combat;
+    private readonly ICombatOutcomeService _outcome;
     private readonly ITurnService _turns;
     private readonly IPlayStateService _playState;
     private readonly IPlayOrchestratorService _orchestrator;
 
     public PlayCombatFacade(
         ICombatService combat,
+        ICombatOutcomeService outcome,
         ITurnService turns,
         IPlayStateService playState,
         IPlayOrchestratorService orchestrator)
     {
         _combat = combat;
+        _outcome = outcome;
         _turns = turns;
         _playState = playState;
         _orchestrator = orchestrator;
@@ -126,6 +129,32 @@ public sealed class PlayCombatFacade : IPlayCombatFacade
         }
 
         return await _playState.BuildAsync(accountId, gameStateId, new PlayStateBuildRequest(), cancellationToken);
+    }
+
+    public async Task<RpgResult<PlayStateResponse>> ResolveOutcomeAsync(
+        Guid accountId,
+        Guid gameStateId,
+        PlayCombatResolveOutcomeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _outcome.ResolveOutcomeAsync(accountId, gameStateId, request, cancellationToken);
+        if (result.Status != RpgResultStatus.Ok)
+        {
+            return result.Status switch
+            {
+                RpgResultStatus.NotFound => RpgResult<PlayStateResponse>.NotFound(result.Message ?? "Активный бой не найден."),
+                RpgResultStatus.BadRequest => RpgResult<PlayStateResponse>.BadRequest(result.Message ?? "Некорректный исход боя."),
+                RpgResultStatus.Conflict => RpgResult<PlayStateResponse>.Conflict(result.Message ?? "Конфликт состояния боя."),
+                _ => RpgResult<PlayStateResponse>.ServiceUnavailable(null, result.Message ?? "Не удалось обработать исход боя.")
+            };
+        }
+
+        var preferredMode = GetOptionalString(result.Value, "status") == "ongoing" ? "combat" : null;
+        return await _playState.BuildAsync(
+            accountId,
+            gameStateId,
+            new PlayStateBuildRequest(PreferredMode: preferredMode),
+            cancellationToken);
     }
 
     public async Task<RpgResult<PlayStateResponse>> ContinueAsync(

@@ -4,6 +4,7 @@ using backend.Modules.Changes.Domain;
 using backend.Modules.Changes.Infrastructure;
 using backend.Modules.Mechanics.Contracts;
 using backend.Modules.Memory.Contracts;
+using backend.Modules.Combat.Contracts;
 using backend.Modules.Turns.Contracts;
 using backend.Infrastructure.Auth;
 using backend.Shared.Results;
@@ -215,6 +216,17 @@ public sealed class PlayController : ControllerBase
     {
         var current = _currentUser.GetRequiredUser();
         return this.ToActionResult(await _combat.ContinueAsync(current.AccountId, gameStateId, request ?? new PlayContinueRequest(), cancellationToken));
+    }
+
+    [HttpPost("combat/resolve-outcome")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult> ResolveCombatOutcome(Guid gameStateId, [FromBody] PlayCombatResolveOutcomeRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        return this.ToActionResult(await _combat.ResolveOutcomeAsync(current.AccountId, gameStateId, request ?? new PlayCombatResolveOutcomeRequest(), cancellationToken));
     }
 
     [HttpPost("summarize")]

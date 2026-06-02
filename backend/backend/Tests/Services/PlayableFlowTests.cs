@@ -88,7 +88,7 @@ public sealed class PlayableFlowTests
     [InlineData("add_journal_entry", "add_journal_entry", GameChangeOperationClass.Safe, true, true)]
     [InlineData("move_party_to_location", "move_party_to_location", GameChangeOperationClass.Dangerous, true, false)]
     [InlineData("start_combat", "start_combat", GameChangeOperationClass.Dangerous, false, false)]
-    [InlineData("spawn_monster", "spawn_monster", GameChangeOperationClass.Unsupported, false, false)]
+    [InlineData("spawn_monster", "spawn_monster", GameChangeOperationClass.Dangerous, true, false)]
     [InlineData("неизвестно", "неизвестно", GameChangeOperationClass.Unknown, false, false)]
     public void GameChangeOperationPolicy_NormalizesAndClassifies(
         string input,
@@ -115,7 +115,8 @@ public sealed class PlayableFlowTests
         Assert.True(GameChangeOperationPolicy.IsSupported("add_journal_entry"));
         Assert.True(GameChangeOperationPolicy.IsSafeAutoApply("add_journal_entry"));
         Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("move_party_to_location"));
-        Assert.False(GameChangeOperationPolicy.IsSupported("spawn_monster"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("spawn_monster"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("spawn_monster"));
     }
 
     [Fact]
@@ -146,7 +147,7 @@ public sealed class PlayableFlowTests
     {
         var turnService = new FakeTurnService
         {
-            CreateTurnResult = RpgResult<JsonElement>.Conflict("Р’ СЌС‚РѕР№ РёРіСЂРµ СѓР¶Рµ РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ С…РѕРґ.")
+            CreateTurnResult = RpgResult<JsonElement>.Conflict("В этой игре уже обрабатывается ход.")
         };
         var service = new PlayOrchestratorService(
             new FakeGameStateService(),
@@ -192,7 +193,7 @@ public sealed class PlayableFlowTests
         Assert.Empty(result.Value!.Applied);
         Assert.Equal(3, result.Value.Skipped.Count);
         Assert.Contains(result.Value.Skipped, item => item.Operation == "start_combat" && item.Reason == "dangerous operation");
-        Assert.Contains(result.Value.Skipped, item => item.Operation == "spawn_monster" && item.Reason == "unsupported operation");
+        Assert.Contains(result.Value.Skipped, item => item.Operation == "spawn_monster" && item.Reason == "dangerous operation");
         Assert.Contains(result.Value.Skipped, item => item.Operation == "unknown_operation" && item.Reason == "unknown operation");
         Assert.Equal(0, changes.ApplyCalls);
     }
@@ -396,6 +397,11 @@ public sealed class PlayableFlowTests
                 request.ChangeSummary?.Applied ?? Array.Empty<PlayChangeApplicationItem>(),
                 request.ChangeSummary?.Skipped ?? Array.Empty<PlayChangeApplicationItem>(),
                 request.ChangeSummary?.Failed ?? Array.Empty<PlayChangeApplicationItem>(),
+                null,
+                Array.Empty<JsonElement>(),
+                Array.Empty<JsonElement>(),
+                Array.Empty<JsonElement>(),
+                null,
                 null,
                 DateTimeOffset.UtcNow)));
     }
