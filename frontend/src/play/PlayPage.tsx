@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Backpack,
+  Clock,
   Coins,
   Dice5,
   Footprints,
@@ -14,17 +15,21 @@ import {
   Sparkles,
   Swords,
 } from 'lucide-react';
-import { combatApi, inventoryApi, lootApi, playApi, travelApi, charactersApi } from '../shared/api/endpoints';
+import { combatApi, inventoryApi, lootApi, playApi, travelApi, charactersApi, restApi, timeApi } from '../shared/api/endpoints';
 import type { JsonObject, PlayStateResponse } from '../shared/api/types';
 import { arrayOfObjects, boolOf, firstText, idOf, numberOf, objectOf, textOf } from '../shared/api/json';
 import { AppShell, Button, EmptyState, ErrorState, LoadingState, Panel } from '../shared/components/ui';
-import { getErrorMessage } from '../shared/api/errors';
+import { getErrorMessage, isUnavailableActionError } from '../shared/api/errors';
+import { modeInfo, operationDanger, operationLabel } from './labels';
 
 export function PlayPage() {
   const { gameStateId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedCharacterId, setSelectedCharacterId] = useState<string>('');
+  const selectedCharacterStorageKey = `dnd.selectedCharacter.${gameStateId}`;
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() =>
+    gameStateId ? window.localStorage.getItem(`dnd.selectedCharacter.${gameStateId}`) ?? '' : '',
+  );
   const status = useQuery({
     queryKey: ['play-status', gameStateId],
     queryFn: () => playApi.status(gameStateId),
@@ -41,6 +46,10 @@ export function PlayPage() {
   }, [selectedCharacterId, status.data?.characters]);
 
   const activeCharacterId = selectedCharacterId || idOf(selectedCharacter?.id) || '';
+  function selectCharacter(id: string) {
+    setSelectedCharacterId(id);
+    window.localStorage.setItem(selectedCharacterStorageKey, id);
+  }
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ['play-status', gameStateId] });
@@ -83,7 +92,7 @@ export function PlayPage() {
   return (
     <AppShell
       title="Игровой стол"
-      subtitle={`Режим: ${modeLabel(state.mode)} · обновлено ${new Date(state.generatedAt).toLocaleTimeString()}`}
+      subtitle={`${modeInfo(state.mode).label}: ${modeInfo(state.mode).text} · обновлено ${new Date(state.generatedAt).toLocaleTimeString()}`}
       actions={
         <>
           <Button variant="secondary" onClick={refresh}>
@@ -98,11 +107,12 @@ export function PlayPage() {
           <CharacterPanel
             state={state}
             selectedCharacterId={activeCharacterId}
-            onSelect={(id) => setSelectedCharacterId(id)}
+            onSelect={selectCharacter}
             onChanged={refresh}
           />
           <InventoryPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
           <ProgressionPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <RestTimePanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
         </aside>
 
         <section className="main-column">
@@ -146,6 +156,8 @@ function CharacterPanel({
   const resources = objectOf(character?.resources ?? character?.ресурсы);
   const progression = objectOf(character?.progression ?? character?.прогресс ?? state.progression);
   const currency = objectOf(state.currency);
+  const selectedState = state.characterStates.find((item) => String(item.characterId ?? item.id) === selectedCharacterId);
+  const selectedConditions = state.activeConditions.filter((condition) => String(condition.characterId ?? condition.playerId ?? condition.ownerId ?? '') === selectedCharacterId);
 
   return (
     <Panel title="Персонажи">
@@ -163,9 +175,22 @@ function CharacterPanel({
         </p>
         <div className="metric-grid">
           <Metric label="HP" value={`${numberOf(resources?.hpCurrent ?? resources?.хпТекущее, 0)} / ${numberOf(resources?.hpMax ?? resources?.хпМаксимум, 0)}`} />
+          <Metric label="Mana" value={`${numberOf(resources?.manaCurrent ?? resources?.манаТекущая, 0)} / ${numberOf(resources?.manaMax ?? resources?.манаМаксимум, 0)}`} />
+          <Metric label="AP" value={`${numberOf(resources?.actionPointsCurrent ?? resources?.очкиДействийТекущие, 0)} / ${numberOf(resources?.actionPointsMax ?? resources?.очкиДействийМаксимум, 0)}`} />
           <Metric label="Уровень" value={numberOf(progression?.level ?? progression?.уровень, 1)} />
           <Metric label="XP" value={numberOf(progression?.experience ?? progression?.опыт, 0)} />
+          <Metric label="Next" value={numberOf(progression?.nextLevelThreshold ?? progression?.experienceToNextLevel, 300)} />
+          <Metric label="Prof" value={numberOf(progression?.proficiencyBonus, 2)} />
           <Metric label="Золото" value={numberOf(currency?.gold ?? currency?.золотые, 0)} />
+        </div>
+        <div className="condition-list">
+          {boolOf(selectedState?.unconscious, false) ? <span className="badge badge-danger">без сознания</span> : null}
+          {boolOf(selectedState?.dead, false) ? <span className="badge badge-danger">мёртв</span> : null}
+          {selectedConditions.map((condition, index) => (
+            <span className="badge" key={String(condition.id ?? index)}>
+              {firstText(condition, ['name', 'название'], 'состояние')}
+            </span>
+          ))}
         </div>
         {boolOf(progression?.levelUpAvailable, false) ? <LevelUpButton characterId={String(character.id)} onChanged={onChanged} /> : null}
       </div>
@@ -229,8 +254,20 @@ function ActionPanel({
   return (
     <Panel title="Действие игрока">
       {state.mode === 'awaiting_roll' ? (
-        <div className="notice">Сначала нужно закрыть pending бросок. Новые действия не отправляются, пока игра ждёт проверку.</div>
+        <div className="notice">Сначала нужно закрыть бросок. Новые действия не отправляются, пока игра ждёт проверку.</div>
       ) : null}
+      <div className="quick-actions">
+        {quickActionTemplates.map((template) => (
+          <button
+            className="quick-action"
+            key={template}
+            type="button"
+            onClick={() => setMessage((current) => (current.trim() ? `${current.trim()}\n${template}` : template))}
+          >
+            {template}
+          </button>
+        ))}
+      </div>
       <form className="action-form" onSubmit={submit}>
         <textarea
           value={message}
@@ -300,8 +337,17 @@ function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; 
       <div className="list-stack">
         {state.pendingChanges.map((change) => (
           <div className="mini-card" key={String(change.id)}>
-            <strong>{textOf(change.operation, 'operation')}</strong>
-            <small>{truncate(JSON.stringify(change.payload ?? {}), 120)}</small>
+            <div className="change-title">
+              <strong>{operationLabel(textOf(change.operation, 'operation'))}</strong>
+              <span className={`badge ${operationDanger(textOf(change.operation, '')) ? 'badge-danger' : 'badge-safe'}`}>
+                {operationDanger(textOf(change.operation, '')) ? 'опасное' : 'safe'}
+              </span>
+            </div>
+            <small>{payloadSummary(textOf(change.operation, ''), objectOf(change.payload))}</small>
+            <details>
+              <summary>JSON детали</summary>
+              <pre>{JSON.stringify(change.payload ?? {}, null, 2)}</pre>
+            </details>
             <div className="button-row">
               <Button variant="secondary" onClick={() => apply.mutate(String(change.id))}>
                 Применить
@@ -335,6 +381,12 @@ function InventoryPanel({
 }) {
   const [name, setName] = useState('Дорожный паёк');
   const [itemType, setItemType] = useState('consumable');
+  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
+  const markIfUnavailable = (action: string, error: unknown) => {
+    if (isUnavailableActionError(error)) {
+      setDisabledActions((current) => new Set(current).add(action));
+    }
+  };
   const create = useMutation({
     mutationFn: () =>
       inventoryApi.create(gameStateId, characterId, {
@@ -347,6 +399,7 @@ function InventoryPanel({
         properties: itemType === 'consumable' ? { effect: 'heal', amount: 1 } : {},
       }),
     onSuccess: onChanged,
+    onError: (error) => markIfUnavailable('create', error),
   });
   const itemAction = useMutation({
     mutationFn: ({ action, itemId }: { action: 'equip' | 'unequip' | 'use' | 'delete'; itemId: string }) => {
@@ -356,6 +409,7 @@ function InventoryPanel({
       return inventoryApi.delete(gameStateId, characterId, itemId);
     },
     onSuccess: onChanged,
+    onError: (error, variables) => markIfUnavailable(variables.action, error),
   });
 
   return (
@@ -368,7 +422,7 @@ function InventoryPanel({
           <option value="armor">armor</option>
           <option value="misc">misc</option>
         </select>
-        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId}>
+        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId || disabledActions.has('create')}>
           Добавить
         </Button>
       </form>
@@ -383,16 +437,16 @@ function InventoryPanel({
                 {textOf(item.itemType ?? item.item_type ?? item.тип, 'item')} · x{numberOf(item.quantity ?? item.количество, 1)}
               </small>
               <div className="button-row">
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
+                <Button variant="secondary" disabled={disabledActions.has('equip')} onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
                   Надеть
                 </Button>
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
+                <Button variant="secondary" disabled={disabledActions.has('unequip')} onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
                   Снять
                 </Button>
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
+                <Button variant="secondary" disabled={disabledActions.has('use')} onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
                   Использовать
                 </Button>
-                <Button variant="danger" onClick={() => itemAction.mutate({ action: 'delete', itemId: id })}>
+                <Button variant="danger" disabled={disabledActions.has('delete')} onClick={() => itemAction.mutate({ action: 'delete', itemId: id })}>
                   Удалить
                 </Button>
               </div>
@@ -400,7 +454,8 @@ function InventoryPanel({
           );
         })}
       </div>
-      {[create.error, itemAction.error].filter(Boolean).map((error, index) => (
+      {disabledActions.size > 0 ? <p className="muted">Часть inventory-действий отключена: backend endpoint недоступен в текущей версии.</p> : null}
+      {[create.error, itemAction.error].filter((error) => error && !isUnavailableActionError(error)).map((error, index) => (
         <p className="form-error" key={index}>
           {getErrorMessage(error)}
         </p>
@@ -441,9 +496,15 @@ function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChange
 }
 
 function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; state: PlayStateResponse; onChanged: () => void }) {
-  const start = useMutation({ mutationFn: () => combatApi.start(gameStateId), onSuccess: onChanged });
-  const end = useMutation({ mutationFn: () => combatApi.end(gameStateId), onSuccess: onChanged });
-  const resolve = useMutation({ mutationFn: () => combatApi.resolveOutcome(gameStateId), onSuccess: onChanged });
+  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
+  const markIfUnavailable = (action: string, error: unknown) => {
+    if (isUnavailableActionError(error)) {
+      setDisabledActions((current) => new Set(current).add(action));
+    }
+  };
+  const start = useMutation({ mutationFn: () => combatApi.start(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('start', error) });
+  const end = useMutation({ mutationFn: () => combatApi.end(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('end', error) });
+  const resolve = useMutation({ mutationFn: () => combatApi.resolveOutcome(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('resolve', error) });
   const participants = arrayOfObjects(state.combat?.participants);
 
   return (
@@ -468,17 +529,19 @@ function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; s
         </>
       ) : null}
       <div className="button-row">
-        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending}>
+        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending || disabledActions.has('start')}>
           Начать
         </Button>
-        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending}>
+        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending || disabledActions.has('resolve')}>
           Исход
         </Button>
-        <Button variant="danger" onClick={() => end.mutate()} disabled={end.isPending}>
+        <Button variant="danger" onClick={() => end.mutate()} disabled={end.isPending || disabledActions.has('end')}>
           Завершить
         </Button>
       </div>
-      {[start.error, end.error, resolve.error].filter(Boolean).map((error, index) => (
+      <p className="muted">Атака появится после выбора attacker/target payload; frontend не генерирует combat rules сам.</p>
+      {disabledActions.size > 0 ? <p className="muted">Часть combat-действий отключена: backend endpoint недоступен в текущей версии.</p> : null}
+      {[start.error, end.error, resolve.error].filter((error) => error && !isUnavailableActionError(error)).map((error, index) => (
         <p className="form-error" key={index}>
           {getErrorMessage(error)}
         </p>
@@ -513,13 +576,101 @@ function ProgressionPanel({
         <Metric label="Next" value={numberOf(progression?.experienceToNextLevel, 300)} />
         <Metric label="Prof" value={numberOf(progression?.proficiencyBonus, 2)} />
       </div>
-      <div className="inline-form">
-        <input type="number" value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
-        <Button variant="secondary" onClick={() => xp.mutate()} disabled={!characterId || xp.isPending}>
-          +XP
+      <details>
+        <summary>Dev / начислить XP вручную</summary>
+        <div className="inline-form details-actions">
+          <input type="number" value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
+          <Button variant="secondary" onClick={() => xp.mutate()} disabled={!characterId || xp.isPending}>
+            +XP
+          </Button>
+        </div>
+      </details>
+      {xp.error ? <p className="form-error">{getErrorMessage(xp.error)}</p> : null}
+    </Panel>
+  );
+}
+
+function RestTimePanel({
+  gameStateId,
+  characterId,
+  state,
+  onChanged,
+}: {
+  gameStateId: string;
+  characterId: string;
+  state: PlayStateResponse;
+  onChanged: () => void;
+}) {
+  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
+  const time = objectOf(state.time);
+  const selectedState = state.characterStates.find((item) => String(item.characterId ?? item.id) === characterId);
+  const markIfUnavailable = (action: string, error: unknown) => {
+    if (isUnavailableActionError(error)) {
+      setDisabledActions((current) => new Set(current).add(action));
+    }
+  };
+  const action = useMutation({
+    mutationFn: async (kind: 'short-rest' | 'long-rest' | 'advance-time' | 'tick' | 'knockout' | 'revive') => {
+      if (kind === 'short-rest') return restApi.short(gameStateId, characterId);
+      if (kind === 'long-rest') return restApi.long(gameStateId, characterId);
+      if (kind === 'advance-time') return timeApi.advance(gameStateId, 60, 'Игровое время продвинуто через frontend.');
+      if (kind === 'tick') return charactersApi.tickConditions(gameStateId, characterId, 1);
+      if (kind === 'knockout') return charactersApi.knockout(gameStateId, characterId);
+      return charactersApi.revive(gameStateId, characterId, 1);
+    },
+    onSuccess: onChanged,
+    onError: (error, kind) => markIfUnavailable(kind, error),
+  });
+
+  return (
+    <Panel title="Время и состояние" actions={<Clock size={18} />}>
+      <div className="metric-grid">
+        <Metric label="День" value={numberOf(time?.day, 1)} />
+        <Metric label="Час" value={numberOf(time?.hour, 0)} />
+        <Metric label="Минуты" value={numberOf(time?.minute, 0)} />
+        <Metric label="Всего" value={numberOf(time?.totalMinutes ?? time?.total_minutes, 0)} />
+      </div>
+      <div className="condition-list">
+        {state.activeConditions.length === 0 ? <span className="muted">Активных состояний нет.</span> : null}
+        {state.activeConditions.slice(0, 5).map((condition, index) => (
+          <span className="badge" key={String(condition.id ?? index)}>
+            {firstText(condition, ['name', 'название'], 'состояние')}
+          </span>
+        ))}
+      </div>
+      {selectedState ? (
+        <div className="condition-list">
+          {boolOf(selectedState.unconscious, false) ? <span className="badge badge-danger">без сознания</span> : null}
+          {boolOf(selectedState.dead, false) ? <span className="badge badge-danger">мёртв</span> : null}
+        </div>
+      ) : null}
+      <div className="button-row">
+        <Button variant="secondary" disabled={action.isPending || disabledActions.has('short-rest')} onClick={() => action.mutate('short-rest')}>
+          Короткий отдых
+        </Button>
+        <Button variant="secondary" disabled={action.isPending || disabledActions.has('long-rest')} onClick={() => action.mutate('long-rest')}>
+          Долгий отдых
+        </Button>
+        <Button variant="secondary" disabled={action.isPending || disabledActions.has('advance-time')} onClick={() => action.mutate('advance-time')}>
+          +1 час
         </Button>
       </div>
-      {xp.error ? <p className="form-error">{getErrorMessage(xp.error)}</p> : null}
+      <details>
+        <summary>Dev / отладка состояния</summary>
+        <div className="button-row details-actions">
+          <Button variant="secondary" disabled={action.isPending || disabledActions.has('tick')} onClick={() => action.mutate('tick')}>
+            Tick conditions
+          </Button>
+          <Button variant="danger" disabled={action.isPending || disabledActions.has('knockout')} onClick={() => action.mutate('knockout')}>
+            Knockout
+          </Button>
+          <Button variant="secondary" disabled={action.isPending || disabledActions.has('revive')} onClick={() => action.mutate('revive')}>
+            Revive
+          </Button>
+        </div>
+      </details>
+      {disabledActions.size > 0 ? <p className="muted">Некоторые действия отключены: backend endpoint недоступен в текущей версии.</p> : null}
+      {action.error && !isUnavailableActionError(action.error) ? <p className="form-error">{getErrorMessage(action.error)}</p> : null}
     </Panel>
   );
 }
@@ -580,16 +731,13 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function modeLabel(mode: string) {
-  const labels: Record<string, string> = {
-    narration: 'повествование',
-    awaiting_roll: 'нужен бросок',
-    awaiting_change_confirmation: 'подтверждение изменений',
-    combat: 'бой',
-    travel: 'переход',
-  };
-  return labels[mode] ?? mode;
-}
+const quickActionTemplates = [
+  'Осмотреться',
+  'Поговорить с ближайшим NPC',
+  'Искать следы',
+  'Проверить инвентарь',
+  'Двигаться осторожно',
+];
 
 function describePayload(payload: JsonObject | null) {
   if (!payload) return 'Нет деталей';
@@ -597,6 +745,16 @@ function describePayload(payload: JsonObject | null) {
   const dc = textOf(payload.difficultyClass ?? payload.сложность, '');
   const reason = textOf(payload.reason ?? payload.причина, '');
   return [ability && `характеристика: ${ability}`, dc && `сложность: ${dc}`, reason].filter(Boolean).join(' · ') || 'Проверка';
+}
+
+function payloadSummary(operation: string, payload: JsonObject | null) {
+  if (!payload) return operationLabel(operation);
+
+  const name = firstText(payload, ['name', 'title', 'название', 'имя'], '');
+  const text = firstText(payload, ['text', 'entry', 'description', 'summary', 'текст', 'запись', 'описание'], '');
+  const status = firstText(payload, ['status', 'статус'], '');
+  const amount = textOf(payload.amount ?? payload.experience ?? payload.gold ?? payload.опыт ?? payload.золото, '');
+  return truncate([name, text, status && `статус: ${status}`, amount && `значение: ${amount}`].filter(Boolean).join(' · ') || JSON.stringify(payload), 160);
 }
 
 function truncate(value: string, max: number) {

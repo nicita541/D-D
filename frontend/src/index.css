@@ -292,6 +292,13 @@ blockquote {
   text-decoration: none;
 }
 
+.game-row-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .game-row small,
 .mini-card small {
   display: block;
@@ -353,6 +360,22 @@ blockquote {
   color: #ffb4b4;
 }
 
+.warning-box,
+.success-box {
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.warning-box {
+  background: rgba(202, 155, 74, 0.14);
+  color: #f2d39c;
+}
+
+.success-box {
+  background: rgba(64, 145, 108, 0.14);
+  color: #b8f2d3;
+}
+
 .error-box {
   display: flex;
   gap: 8px;
@@ -369,6 +392,76 @@ blockquote {
 
 .spin {
   animation: spin 1s linear infinite;
+}
+
+.quick-actions,
+.condition-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.quick-action,
+.badge {
+  border: 1px solid #3a4354;
+  border-radius: 999px;
+  background: #202633;
+  color: #dce4ef;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.quick-action {
+  cursor: pointer;
+}
+
+.quick-action:hover {
+  border-color: #ca9b4a;
+}
+
+.badge-danger {
+  border-color: #8e3d3d;
+  background: rgba(126, 44, 44, 0.35);
+  color: #ffd6d6;
+}
+
+.badge-safe {
+  border-color: #3e765f;
+  background: rgba(64, 145, 108, 0.18);
+  color: #c8f3db;
+}
+
+.change-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+details {
+  border-top: 1px solid #2d3442;
+  padding-top: 8px;
+}
+
+summary {
+  cursor: pointer;
+  color: #c8d0dc;
+  font-weight: 700;
+}
+
+pre {
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f131a;
+  padding: 10px;
+  color: #dfe7f3;
+  white-space: pre-wrap;
+}
+
+.details-actions {
+  margin-top: 10px;
 }
 
 @keyframes spin {

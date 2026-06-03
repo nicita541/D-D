@@ -11,3 +11,7 @@ export function getErrorMessage(error: unknown) {
 
   return 'Произошла неизвестная ошибка.';
 }
+
+export function isUnavailableActionError(error: unknown) {
+  return error instanceof ApiError && [404, 405, 501].includes(error.status);
+}

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { charactersApi, playApi } from '../shared/api/endpoints';
@@ -10,27 +10,57 @@ import { defaultCharacter, toCreateCharacterPayload, type CharacterFormData } fr
 export function SetupPage() {
   const { gameStateId = '' } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<CharacterFormData>(defaultCharacter);
+  const [bootstrapWarning, setBootstrapWarning] = useState('');
+  const [createdMessage, setCreatedMessage] = useState('');
   const characters = useQuery({
     queryKey: ['characters', gameStateId],
     queryFn: () => charactersApi.list(gameStateId),
     enabled: Boolean(gameStateId),
   });
   const create = useMutation({
-    mutationFn: async () => {
-      await charactersApi.create(gameStateId, toCreateCharacterPayload(form));
+    mutationFn: async (mode: 'create' | 'create-start') => {
+      setBootstrapWarning('');
+      setCreatedMessage('');
+      const character = await charactersApi.create(gameStateId, toCreateCharacterPayload(form));
+      if (mode === 'create') {
+        return { character, bootstrapped: false, warning: '' };
+      }
+
       try {
         await playApi.bootstrap(gameStateId);
-      } catch {
-        // Bootstrap may return conflict if the game was already prepared; setup can still continue.
+        return { character, bootstrapped: true, warning: '' };
+      } catch (error) {
+        return {
+          character,
+          bootstrapped: false,
+          warning: `Персонаж создан, но стартовая сцена не подготовилась: ${getErrorMessage(error)}`,
+        };
       }
     },
+    onSuccess: (result, mode) => {
+      void queryClient.invalidateQueries({ queryKey: ['characters', gameStateId] });
+      setCreatedMessage('Персонаж создан.');
+      if (result.warning) {
+        setBootstrapWarning(result.warning);
+        return;
+      }
+
+      if (mode === 'create-start') {
+        navigate(`/games/${gameStateId}/play`);
+      }
+    },
+  });
+  const bootstrap = useMutation({
+    mutationFn: () => playApi.bootstrap(gameStateId),
     onSuccess: () => navigate(`/games/${gameStateId}/play`),
+    onError: (error) => setBootstrapWarning(`Стартовая сцена не подготовилась: ${getErrorMessage(error)}`),
   });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    create.mutate();
+    create.mutate('create-start');
   }
 
   return (
@@ -80,9 +110,24 @@ export function SetupPage() {
             </div>
 
             {create.error ? <p className="form-error">{getErrorMessage(create.error)}</p> : null}
-            <Button type="submit" disabled={create.isPending}>
-              <Sparkles size={18} /> {create.isPending ? 'Создаём...' : 'Создать героя и начать'}
-            </Button>
+            {bootstrapWarning ? <p className="warning-box">{bootstrapWarning}</p> : null}
+            {createdMessage && !bootstrapWarning ? <p className="success-box">{createdMessage}</p> : null}
+            <div className="button-row">
+              <Button type="button" variant="secondary" disabled={create.isPending} onClick={() => create.mutate('create')}>
+                Создать героя
+              </Button>
+              <Button type="submit" disabled={create.isPending}>
+                <Sparkles size={18} /> {create.isPending ? 'Создаём...' : 'Создать героя и начать'}
+              </Button>
+            </div>
+            <div className="button-row">
+              <Button type="button" variant="secondary" disabled={bootstrap.isPending} onClick={() => bootstrap.mutate()}>
+                Повторить bootstrap
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => navigate(`/games/${gameStateId}/play`)}>
+                Перейти к игре
+              </Button>
+            </div>
           </form>
         </Panel>
 

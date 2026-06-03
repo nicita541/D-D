@@ -45,11 +45,7 @@ async function apiRequest<T>(path: string, options: ApiRequestOptions): Promise<
     throw await toApiError(response);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+  return parseOkResponse<T>(response);
 }
 
 function buildRequest(options: ApiRequestOptions): RequestInit {
@@ -92,7 +88,13 @@ async function refreshTokens() {
       return false;
     }
 
-    saveAuthSession((await response.json()) as AuthResponse);
+    const refreshed = await parseOkResponse<AuthResponse>(response);
+    if (!refreshed?.accessToken || !refreshed.refreshToken) {
+      clearAuthSession();
+      return false;
+    }
+
+    saveAuthSession(refreshed);
     return true;
   } catch {
     clearAuthSession();
@@ -101,19 +103,40 @@ async function refreshTokens() {
 }
 
 async function toApiError(response: Response) {
-  let payload: ApiErrorPayload | string | undefined;
-  try {
-    payload = (await response.json()) as ApiErrorPayload;
-  } catch {
-    payload = await response.text();
+  const raw = await response.text();
+  let payload: ApiErrorPayload | string | undefined = raw || undefined;
+
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as ApiErrorPayload;
+    } catch {
+      payload = raw;
+    }
   }
 
   const message =
     typeof payload === 'string'
-      ? payload
+      ? payload || defaultErrorMessage(response.status)
       : payload?.message ?? payload?.error ?? payload?.detail ?? payload?.title ?? defaultErrorMessage(response.status);
 
   return new ApiError(response.status, message, payload);
+}
+
+async function parseOkResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const raw = await response.text();
+  if (!raw) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new ApiError(response.status, 'Backend вернул некорректный JSON.', raw);
+  }
 }
 
 function defaultErrorMessage(status: number) {

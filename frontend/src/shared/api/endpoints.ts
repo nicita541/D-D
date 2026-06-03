@@ -56,6 +56,18 @@ export const charactersApi = {
   levelUp(gameStateId: string, characterId: string) {
     return apiPost<JsonObject>(`/game-states/${gameStateId}/characters/${characterId}/level-up`, {});
   },
+
+  tickConditions(gameStateId: string, characterId: string, turns = 1) {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/characters/${characterId}/conditions/tick`, { turns });
+  },
+
+  knockout(gameStateId: string, characterId: string, reason = 'Выведен из строя через игровой экран.') {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/characters/${characterId}/knockout`, { reason });
+  },
+
+  revive(gameStateId: string, characterId: string, hp = 1, reason = 'Оживление через игровой экран.') {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/characters/${characterId}/revive`, { hp, reason, clearDead: true });
+  },
 };
 
 export const playApi = {
@@ -153,5 +165,31 @@ export const combatApi = {
 export const lootApi = {
   claim(gameStateId: string, lootContainerId: string, characterId?: string) {
     return apiPost<JsonObject>(`/game-states/${gameStateId}/loot/${lootContainerId}/claim`, { characterId });
+  },
+};
+
+export const timeApi = {
+  get(gameStateId: string) {
+    return apiGet<JsonObject>(`/game-states/${gameStateId}/time`);
+  },
+
+  advance(gameStateId: string, minutes: number, reason = 'Время продвинуто через игровой экран.') {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/time/advance`, { minutes, reason, tickConditions: true });
+  },
+};
+
+export const restApi = {
+  short(gameStateId: string, characterId?: string) {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/rest/short`, {
+      characterId,
+      reason: 'Короткий отдых через игровой экран.',
+    });
+  },
+
+  long(gameStateId: string, characterId?: string) {
+    return apiPost<JsonObject>(`/game-states/${gameStateId}/rest/long`, {
+      characterId,
+      reason: 'Долгий отдых через игровой экран.',
+    });
   },
 };

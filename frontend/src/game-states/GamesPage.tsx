@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Plus, Swords } from 'lucide-react';
 import { gameStatesApi } from '../shared/api/endpoints';
 import { Button, AppShell, EmptyState, ErrorState, Field, LoadingState, Panel } from '../shared/components/ui';
 import { useAuth } from '../auth/useAuth';
+import { getErrorMessage } from '../shared/api/errors';
 
 export function GamesPage() {
   const auth = useAuth();
@@ -51,7 +52,7 @@ export function GamesPage() {
             <Button type="submit" disabled={create.isPending}>
               <Plus size={18} /> {create.isPending ? 'Создаём...' : 'Создать'}
             </Button>
-            {create.error ? <p className="form-error">{create.error.message}</p> : null}
+            {create.error ? <p className="form-error">{getErrorMessage(create.error)}</p> : null}
           </form>
         </Panel>
 
@@ -63,11 +64,17 @@ export function GamesPage() {
           ) : null}
           <div className="list-stack">
             {games.data?.map((game) => (
-              <Link className="game-row" key={game.id} to={`/games/${game.id}/play`}>
+              <div className="game-row" key={game.id}>
                 <Swords size={18} />
                 <span>{String(game.name ?? game.название ?? 'Без названия')}</span>
                 <small>{game.id}</small>
-              </Link>
+                <div className="game-row-actions">
+                  <Button variant="secondary" onClick={() => navigate(`/games/${game.id}/setup`)}>
+                    Настройка персонажа
+                  </Button>
+                  <Button onClick={() => navigate(`/games/${game.id}/play`)}>Продолжить</Button>
+                </div>
+              </div>
             ))}
           </div>
         </Panel>
