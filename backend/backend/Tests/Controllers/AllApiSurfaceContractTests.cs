@@ -1,6 +1,19 @@
 ﻿using System.Reflection;
-using backend.Controllers;
-using backend.Controllers.Rpg;
+using backend.Infrastructure.Api;
+using backend.Modules.Ai.Api;
+using backend.Modules.Campaigns.Api;
+using backend.Modules.Changes.Api;
+using backend.Modules.Characters.Api;
+using backend.Modules.Combat.Api;
+using backend.Modules.GameStates.Api;
+using backend.Modules.Mechanics.Api;
+using backend.Modules.Memory.Api;
+using backend.Modules.Party.Api;
+using backend.Modules.Play.Api;
+using backend.Modules.Story.Api;
+using backend.Modules.Travel.Api;
+using backend.Modules.Turns.Api;
+using backend.Modules.World.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -230,9 +243,18 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/play/combat/action",
             "POST api/game-states/{gameStateId:guid}/play/combat/end",
             "POST api/game-states/{gameStateId:guid}/play/combat/continue",
+            "POST api/game-states/{gameStateId:guid}/play/combat/resolve-outcome",
             "POST api/game-states/{gameStateId:guid}/play/summarize",
             "POST api/game-states/{gameStateId:guid}/play/bootstrap",
             "GET api/game-states/{gameStateId:guid}/travel/options",
+
+            "GET api/game-states/{gameStateId:guid}/time",
+            "POST api/game-states/{gameStateId:guid}/time/advance",
+            "POST api/game-states/{gameStateId:guid}/rest/short",
+            "POST api/game-states/{gameStateId:guid}/rest/long",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/conditions/tick",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/knockout",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/revive",
 
             "POST api/game-states/{gameStateId:guid}/rolls",
             "POST api/game-states/{gameStateId:guid}/checks/ability",
@@ -256,6 +278,11 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/changes/{changeId:guid}/apply",
             "POST api/game-states/{gameStateId:guid}/changes/{changeId:guid}/reject",
 
+            "GET api/game-states/{gameStateId:guid}/loot",
+            "POST api/game-states/{gameStateId:guid}/loot",
+            "GET api/game-states/{gameStateId:guid}/loot/{lootContainerId:guid}",
+            "POST api/game-states/{gameStateId:guid}/loot/{lootContainerId:guid}/claim",
+
             "GET api/game-states/{gameStateId:guid}/turns",
             "POST api/game-states/{gameStateId:guid}/turns",
             "GET api/game-states/{gameStateId:guid}/turns/{turnId:guid}",
@@ -267,7 +294,14 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/world/quests",
             "POST api/game-states/{gameStateId:guid}/world/monsters",
 
+            "GET api/game-states/{gameStateId:guid}/monsters",
+            "POST api/game-states/{gameStateId:guid}/monsters",
+            "GET api/game-states/{gameStateId:guid}/monsters/{monsterId:guid}",
+            "POST api/game-states/{gameStateId:guid}/monsters/spawn",
+            "POST api/game-states/{gameStateId:guid}/monsters/{monsterId:guid}/kill",
+
             "GET api/game-states/{gameStateId:guid}/combat",
+            "GET api/game-states/{gameStateId:guid}/combat/outcome",
             "POST api/game-states/{gameStateId:guid}/combat/start",
             "POST api/game-states/{gameStateId:guid}/combat/participants",
             "POST api/game-states/{gameStateId:guid}/combat/next-turn",
@@ -277,7 +311,14 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/combat/end",
 
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/experience",
-            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up"
+            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/progression",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/xp",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up",
+            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency/add",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency/spend",
+            "POST api/game-states/{gameStateId:guid}/quests/{questId:guid}/complete",
+            "POST api/game-states/{gameStateId:guid}/quests/{questId:guid}/rewards/grant"
         };
 
         var missing = required
@@ -291,7 +332,7 @@ public sealed class AllApiSurfaceContractTests
     [Fact]
     public void Ai_Context_And_Game_State_Document_Source_Are_Updated_For_New_Architecture()
     {
-        var aiContextRepository = ReadRepositoryFile("backend/backend/Repositories/Rpg/AiMasterContextRepository.cs");
+        var aiContextRepository = ReadRepositoryFile("backend/backend/Modules/Ai/Infrastructure/AiMasterContextRepository.cs");
 
         Assert.Contains("recent_rolls AS", aiContextRepository);
         Assert.Contains("recent_checks AS", aiContextRepository);

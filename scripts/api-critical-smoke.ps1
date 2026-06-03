@@ -218,6 +218,7 @@ $importantRoutes = @(
 "/api/game-states/{gameStateId}/play/combat/action",
 "/api/game-states/{gameStateId}/play/combat/end",
 "/api/game-states/{gameStateId}/play/combat/continue",
+"/api/game-states/{gameStateId}/play/combat/resolve-outcome",
 "/api/game-states/{gameStateId}/play/summarize",
 "/api/game-states/{gameStateId}/play/bootstrap",
 "/api/game-states/{gameStateId}/travel/options",
@@ -228,6 +229,22 @@ $importantRoutes = @(
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}/unequip",
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}/use",
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items/{itemId}",
+    "/api/game-states/{gameStateId}/characters/{characterId}/xp",
+    "/api/game-states/{gameStateId}/characters/{characterId}/currency",
+    "/api/game-states/{gameStateId}/characters/{characterId}/currency/add",
+    "/api/game-states/{gameStateId}/characters/{characterId}/currency/spend",
+
+    "/api/game-states/{gameStateId}/monsters",
+    "/api/game-states/{gameStateId}/monsters/{monsterId}",
+    "/api/game-states/{gameStateId}/monsters/spawn",
+    "/api/game-states/{gameStateId}/monsters/{monsterId}/kill",
+
+    "/api/game-states/{gameStateId}/loot",
+    "/api/game-states/{gameStateId}/loot/{lootContainerId}",
+    "/api/game-states/{gameStateId}/loot/{lootContainerId}/claim",
+
+    "/api/game-states/{gameStateId}/quests/{questId}/complete",
+    "/api/game-states/{gameStateId}/quests/{questId}/rewards/grant",
 
     "/api/game-states/{gameStateId}/turns",
     "/api/game-states/{gameStateId}/turns/{turnId}",
@@ -243,7 +260,8 @@ $importantRoutes = @(
     "/api/game-states/{gameStateId}/changes",
     "/api/game-states/{gameStateId}/mechanic-requests",
 
-    "/api/game-states/{gameStateId}/combat"
+    "/api/game-states/{gameStateId}/combat",
+    "/api/game-states/{gameStateId}/combat/outcome"
 )
 
 foreach ($route in $importantRoutes) {

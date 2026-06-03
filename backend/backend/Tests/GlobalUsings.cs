@@ -1,0 +1,16 @@
+global using backend.Infrastructure.Api;
+global using backend.Modules.Ai.Api;
+global using backend.Modules.Auth.Api;
+global using backend.Modules.Campaigns.Api;
+global using backend.Modules.Changes.Api;
+global using backend.Modules.Characters.Api;
+global using backend.Modules.Combat.Api;
+global using backend.Modules.GameStates.Api;
+global using backend.Modules.Mechanics.Api;
+global using backend.Modules.Memory.Api;
+global using backend.Modules.Party.Api;
+global using backend.Modules.Play.Api;
+global using backend.Modules.Story.Api;
+global using backend.Modules.Travel.Api;
+global using backend.Modules.Turns.Api;
+global using backend.Modules.World.Api;

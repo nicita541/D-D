@@ -1,11 +1,43 @@
 using System.Text.Json;
-using backend.Contracts.Rpg.Characters;
-using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Mechanics;
-using backend.Contracts.Rpg.Memory;
+using backend.Modules.Characters.Contracts;
+using backend.Modules.Characters.Domain;
+using backend.Shared.Contracts;
+using backend.Shared.Kernel;
+using backend.Modules.Mechanics.Contracts;
+using backend.Modules.Memory.Contracts;
 using backend.Infrastructure.Ai;
-using backend.Repositories.Rpg;
-using backend.Services.Rpg;
+using backend.Modules.Combat.Application;
+using backend.Modules.Combat.Contracts;
+using backend.Modules.Combat.Domain;
+using backend.Modules.Combat.Infrastructure;
+using backend.Modules.Ai.Infrastructure;
+using backend.Modules.Campaigns.Infrastructure;
+using backend.Modules.Changes.Infrastructure;
+using backend.Modules.Characters.Infrastructure;
+using backend.Modules.Combat.Infrastructure;
+using backend.Modules.GameStates.Infrastructure;
+using backend.Modules.Mechanics.Infrastructure;
+using backend.Modules.Memory.Infrastructure;
+using backend.Modules.Party.Infrastructure;
+using backend.Modules.Play.Infrastructure;
+using backend.Modules.Story.Infrastructure;
+using backend.Modules.Travel.Infrastructure;
+using backend.Modules.Turns.Infrastructure;
+using backend.Modules.World.Infrastructure;
+using backend.Modules.Ai.Application;
+using backend.Modules.Campaigns.Application;
+using backend.Modules.Changes.Application;
+using backend.Modules.Characters.Application;
+using backend.Modules.Combat.Application;
+using backend.Modules.GameStates.Application;
+using backend.Modules.Mechanics.Application;
+using backend.Modules.Memory.Application;
+using backend.Modules.Party.Application;
+using backend.Modules.Play.Application;
+using backend.Modules.Story.Application;
+using backend.Modules.Travel.Application;
+using backend.Modules.Turns.Application;
+using backend.Modules.World.Application;
 
 namespace Tests.Services;
 
@@ -122,6 +154,33 @@ public sealed class Pass2MechanicsTests
     }
 
     [Fact]
+    public void ProgressionRules_ReturnExpectedMvpThresholds()
+    {
+        Assert.Equal(0, ProgressionRules.GetLevelThreshold(1));
+        Assert.Equal(300, ProgressionRules.GetLevelThreshold(2));
+        Assert.Equal(900, ProgressionRules.GetLevelThreshold(3));
+        Assert.Equal(2700, ProgressionRules.GetLevelThreshold(4));
+        Assert.Equal(6500, ProgressionRules.GetLevelThreshold(5));
+    }
+
+    [Fact]
+    public void ProgressionRules_CanLevelUpUsesNextThreshold()
+    {
+        Assert.False(ProgressionRules.CanLevelUp(1, 299));
+        Assert.True(ProgressionRules.CanLevelUp(1, 300));
+        Assert.True(ProgressionRules.CanLevelUp(2, 900));
+        Assert.False(ProgressionRules.CanLevelUp(5, 999999));
+    }
+
+    [Fact]
+    public void ProgressionRules_ProficiencyBonusUsesMvpBands()
+    {
+        Assert.Equal(2, ProgressionRules.GetProficiencyBonus(1));
+        Assert.Equal(2, ProgressionRules.GetProficiencyBonus(4));
+        Assert.Equal(3, ProgressionRules.GetProficiencyBonus(5));
+    }
+
+    [Fact]
     public async Task CharacterProgressionService_RejectsInvalidExperience()
     {
         var service = new CharacterProgressionService(new FakeCharacterProgressionRepository());
@@ -143,11 +202,22 @@ public sealed class Pass2MechanicsTests
     }
 
     [Fact]
+    public async Task CharacterProgressionService_GetProgressionReturnsCurrentState()
+    {
+        var service = new CharacterProgressionService(new FakeCharacterProgressionRepository());
+
+        var result = await service.GetProgressionAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(RpgResultStatus.Ok, result.Status);
+        Assert.True(result.Value.GetProperty("levelUpAvailable").GetBoolean());
+    }
+
+    [Fact]
     public async Task CharacterProgressionService_RejectsTooLargeHpBonus()
     {
         var service = new CharacterProgressionService(new FakeCharacterProgressionRepository());
 
-        var result = await service.LevelUpAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new LevelUpRequest { NewLevel = 2, HpMaxAdd = 51 }, CancellationToken.None);
+        var result = await service.LevelUpAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new LevelUpRequest { HpMaxAdd = 51 }, CancellationToken.None);
 
         Assert.Equal(RpgResultStatus.BadRequest, result.Status);
     }
@@ -235,6 +305,20 @@ public sealed class Pass2MechanicsTests
 
     private sealed class FakeCharacterProgressionRepository : ICharacterProgressionRepository
     {
+        public Task<JsonElement?> GetProgressionAsync(Guid accountId, Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
+            => Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new
+            {
+                characterId,
+                level = 1,
+                experience = 350,
+                experienceToNextLevel = 300,
+                levelUpAvailable = true,
+                proficiencyBonus = 2,
+                nextLevelThreshold = 300,
+                hpMax = 12,
+                hpCurrent = 12
+            }));
+
         public Task<JsonElement?> AddExperienceAsync(Guid accountId, Guid gameStateId, Guid characterId, int experience, string reason, CancellationToken cancellationToken)
             => Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new
             {
@@ -242,10 +326,11 @@ public sealed class Pass2MechanicsTests
                 experience = 350,
                 level = 1,
                 experienceToNextLevel = 300,
+                levelUpAvailable = true,
                 canLevelUp = true
             }));
 
-        public Task<JsonElement?> LevelUpAsync(Guid accountId, Guid gameStateId, Guid characterId, int newLevel, int hpMaxAdd, CancellationToken cancellationToken)
-            => Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new { characterId, level = newLevel, hpMax = 17, hpCurrent = 17 }));
+        public Task<JsonElement?> LevelUpAsync(Guid accountId, Guid gameStateId, Guid characterId, int? requestedNewLevel, int? hpMaxAdd, CancellationToken cancellationToken)
+            => Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new { characterId, oldLevel = 1, newLevel = 2, hpMax = 17, hpCurrent = 17 }));
     }
 }

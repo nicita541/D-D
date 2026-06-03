@@ -1,9 +1,43 @@
 using System.Reflection;
 using System.Text.Json;
-using backend.Controllers;
-using backend.Controllers.Rpg;
+using backend.Infrastructure.Api;
+using backend.Modules.Ai.Api;
+using backend.Modules.Campaigns.Api;
+using backend.Modules.Changes.Api;
+using backend.Modules.Characters.Api;
+using backend.Modules.Combat.Api;
+using backend.Modules.GameStates.Api;
+using backend.Modules.Mechanics.Api;
+using backend.Modules.Memory.Api;
+using backend.Modules.Party.Api;
+using backend.Modules.Play.Api;
+using backend.Modules.Story.Api;
+using backend.Modules.Travel.Api;
+using backend.Modules.Turns.Api;
+using backend.Modules.World.Api;
 using backend.Infrastructure.Auth;
-using backend.Services.Rpg;
+using backend.Modules.Changes.Application;
+using backend.Modules.Changes.Contracts;
+using backend.Modules.Changes.Domain;
+using backend.Modules.Changes.Infrastructure;
+using backend.Modules.Combat.Application;
+using backend.Modules.Combat.Contracts;
+using backend.Modules.Combat.Domain;
+using backend.Modules.Combat.Infrastructure;
+using backend.Modules.Ai.Application;
+using backend.Modules.Campaigns.Application;
+using backend.Modules.Changes.Application;
+using backend.Modules.Characters.Application;
+using backend.Modules.Combat.Application;
+using backend.Modules.GameStates.Application;
+using backend.Modules.Mechanics.Application;
+using backend.Modules.Memory.Application;
+using backend.Modules.Party.Application;
+using backend.Modules.Play.Application;
+using backend.Modules.Story.Application;
+using backend.Modules.Travel.Application;
+using backend.Modules.Turns.Application;
+using backend.Modules.World.Application;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -153,7 +187,7 @@ public sealed class ApiContractTests
     [Fact]
     public void AiMasterContextRepository_Source_ContainsMechanicsContextFields()
     {
-        var source = ReadRepositoryFile("backend/backend/Repositories/Rpg/AiMasterContextRepository.cs");
+        var source = ReadRepositoryFile("backend/backend/Modules/Ai/Infrastructure/AiMasterContextRepository.cs");
 
         Assert.Contains("recent_rolls AS", source);
         Assert.Contains("recent_checks AS", source);

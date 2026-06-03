@@ -1,11 +1,44 @@
-using System.Text.Json;
-using backend.Contracts.Rpg.Characters;
-using backend.Contracts.Rpg.Common;
-using backend.Contracts.Rpg.Mechanics;
-using backend.Contracts.Rpg.Play;
-using backend.Contracts.Rpg.Turns;
-using backend.Repositories.Rpg;
-using backend.Services.Rpg;
+﻿using System.Text.Json;
+using backend.Modules.Characters.Contracts;
+using backend.Shared.Contracts;
+using backend.Shared.Kernel;
+using backend.Modules.Mechanics.Contracts;
+using backend.Modules.Play.Application;
+using backend.Modules.Play.Contracts;
+using backend.Modules.Play.Infrastructure;
+using backend.Modules.Turns.Contracts;
+using backend.Modules.Changes.Application;
+using backend.Modules.Changes.Contracts;
+using backend.Modules.Changes.Domain;
+using backend.Modules.Changes.Infrastructure;
+using backend.Modules.Ai.Infrastructure;
+using backend.Modules.Campaigns.Infrastructure;
+using backend.Modules.Changes.Infrastructure;
+using backend.Modules.Characters.Infrastructure;
+using backend.Modules.Combat.Infrastructure;
+using backend.Modules.GameStates.Infrastructure;
+using backend.Modules.Mechanics.Infrastructure;
+using backend.Modules.Memory.Infrastructure;
+using backend.Modules.Party.Infrastructure;
+using backend.Modules.Play.Infrastructure;
+using backend.Modules.Story.Infrastructure;
+using backend.Modules.Travel.Infrastructure;
+using backend.Modules.Turns.Infrastructure;
+using backend.Modules.World.Infrastructure;
+using backend.Modules.Ai.Application;
+using backend.Modules.Campaigns.Application;
+using backend.Modules.Changes.Application;
+using backend.Modules.Characters.Application;
+using backend.Modules.Combat.Application;
+using backend.Modules.GameStates.Application;
+using backend.Modules.Mechanics.Application;
+using backend.Modules.Memory.Application;
+using backend.Modules.Party.Application;
+using backend.Modules.Play.Application;
+using backend.Modules.Story.Application;
+using backend.Modules.Travel.Application;
+using backend.Modules.Turns.Application;
+using backend.Modules.World.Application;
 
 namespace Tests.Services;
 
@@ -55,7 +88,7 @@ public sealed class PlayableFlowTests
     [InlineData("add_journal_entry", "add_journal_entry", GameChangeOperationClass.Safe, true, true)]
     [InlineData("move_party_to_location", "move_party_to_location", GameChangeOperationClass.Dangerous, true, false)]
     [InlineData("start_combat", "start_combat", GameChangeOperationClass.Dangerous, false, false)]
-    [InlineData("spawn_monster", "spawn_monster", GameChangeOperationClass.Unsupported, false, false)]
+    [InlineData("spawn_monster", "spawn_monster", GameChangeOperationClass.Dangerous, true, false)]
     [InlineData("неизвестно", "неизвестно", GameChangeOperationClass.Unknown, false, false)]
     public void GameChangeOperationPolicy_NormalizesAndClassifies(
         string input,
@@ -70,6 +103,119 @@ public sealed class PlayableFlowTests
         Assert.Equal(expectedClass, descriptor.Class);
         Assert.Equal(expectedSupported, descriptor.IsSupported);
         Assert.Equal(expectedSafe, descriptor.IsSafeAutoApply);
+    }
+
+    [Fact]
+    public void GameChangeOperationPolicy_DescribeDoesNotThrowOnFirstAccess()
+    {
+        var exception = Record.Exception(() => GameChangeOperationPolicy.Describe("add_journal_entry"));
+
+        Assert.Null(exception);
+    }
+
+    [Theory]
+    [InlineData("create_monster")]
+    [InlineData("spawn_monster")]
+    [InlineData("kill_monster")]
+    [InlineData("add_xp")]
+    [InlineData("level_up")]
+    [InlineData("complete_quest")]
+    [InlineData("grant_reward")]
+    [InlineData("grant_quest_reward")]
+    [InlineData("add_currency")]
+    [InlineData("spend_currency")]
+    public void GameChangeOperationPolicy_RewardLoopOperationsAreSupportedDangerousAndNotSafe(string operation)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(operation);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.True(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Theory]
+    [InlineData("short_rest")]
+    [InlineData("long_rest")]
+    [InlineData("advance_time")]
+    [InlineData("tick_conditions")]
+    [InlineData("apply_condition_duration")]
+    [InlineData("kill_character")]
+    [InlineData("revive_character")]
+    [InlineData("knock_out_character")]
+    public void GameChangeOperationPolicy_RestTimeConditionOperationsAreSupportedDangerousAndNotSafe(string operation)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(operation);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.True(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Theory]
+    [InlineData("короткий_отдых", "short_rest")]
+    [InlineData("долгий_отдых", "long_rest")]
+    [InlineData("продвинуть_время", "advance_time")]
+    [InlineData("тик_состояний", "tick_conditions")]
+    [InlineData("применить_длительность_состояния", "apply_condition_duration")]
+    [InlineData("убить_персонажа", "kill_character")]
+    [InlineData("оживить_персонажа", "revive_character")]
+    [InlineData("нокаутировать_персонажа", "knock_out_character")]
+    [InlineData("вырубить_персонажа", "knock_out_character")]
+    public void GameChangeOperationPolicy_RussianRestTimeConditionAliasesCanonicalizeCorrectly(string alias, string expectedCanonical)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(alias);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.Equal(expectedCanonical, descriptor.CanonicalOperation);
+    }
+
+    [Fact]
+    public void GameChangeOperationPolicy_TransferCurrencyIsKnownDangerousUnsupportedAndNotSafe()
+    {
+        var descriptor = GameChangeOperationPolicy.Describe("transfer_currency");
+
+        Assert.True(descriptor.IsKnown);
+        Assert.False(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Theory]
+    [InlineData("создать_монстра", "create_monster")]
+    [InlineData("заспавнить_монстра", "spawn_monster")]
+    [InlineData("убить_монстра", "kill_monster")]
+    [InlineData("добавить_опыт", "add_xp")]
+    [InlineData("повысить_уровень", "level_up")]
+    [InlineData("завершить_квест", "complete_quest")]
+    [InlineData("выдать_награду", "grant_reward")]
+    [InlineData("выдать_награду_квеста", "grant_quest_reward")]
+    [InlineData("добавить_валюту", "add_currency")]
+    [InlineData("потратить_валюту", "spend_currency")]
+    [InlineData("передать_валюту", "transfer_currency")]
+    public void GameChangeOperationPolicy_RussianRewardAliasesCanonicalizeCorrectly(string alias, string expectedCanonical)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(alias);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.Equal(expectedCanonical, descriptor.CanonicalOperation);
+    }
+
+    [Fact]
+    public void GameChangeOperationPolicy_ApiMethodsExposeKnownSupportedAndSafeState()
+    {
+        Assert.True(GameChangeOperationPolicy.IsKnown("добавить_запись_журнала"));
+        Assert.Equal("add_journal_entry", GameChangeOperationPolicy.TryCanonicalize("добавить_запись_журнала"));
+        Assert.Equal("add_journal_entry", GameChangeOperationPolicy.TryCanonicalize("add_journal_entry"));
+        Assert.Null(GameChangeOperationPolicy.TryCanonicalize("not_real"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("add_journal_entry"));
+        Assert.True(GameChangeOperationPolicy.IsSafeAutoApply("add_journal_entry"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("move_party_to_location"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("spawn_monster"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("spawn_monster"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("level_up"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("level_up"));
     }
 
     [Fact]
@@ -146,7 +292,7 @@ public sealed class PlayableFlowTests
         Assert.Empty(result.Value!.Applied);
         Assert.Equal(3, result.Value.Skipped.Count);
         Assert.Contains(result.Value.Skipped, item => item.Operation == "start_combat" && item.Reason == "dangerous operation");
-        Assert.Contains(result.Value.Skipped, item => item.Operation == "spawn_monster" && item.Reason == "unsupported operation");
+        Assert.Contains(result.Value.Skipped, item => item.Operation == "spawn_monster" && item.Reason == "dangerous operation");
         Assert.Contains(result.Value.Skipped, item => item.Operation == "unknown_operation" && item.Reason == "unknown operation");
         Assert.Equal(0, changes.ApplyCalls);
     }
@@ -351,6 +497,15 @@ public sealed class PlayableFlowTests
                 request.ChangeSummary?.Skipped ?? Array.Empty<PlayChangeApplicationItem>(),
                 request.ChangeSummary?.Failed ?? Array.Empty<PlayChangeApplicationItem>(),
                 null,
+                Array.Empty<JsonElement>(),
+                Array.Empty<JsonElement>(),
+                Array.Empty<JsonElement>(),
+                null,
+                null,
+                null,
+                Array.Empty<JsonElement>(),
+                null,
+                Array.Empty<JsonElement>(),
                 DateTimeOffset.UtcNow)));
     }
 }
