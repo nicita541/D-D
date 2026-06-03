@@ -106,6 +106,64 @@ public sealed class PlayableFlowTests
     }
 
     [Fact]
+    public void GameChangeOperationPolicy_DescribeDoesNotThrowOnFirstAccess()
+    {
+        var exception = Record.Exception(() => GameChangeOperationPolicy.Describe("add_journal_entry"));
+
+        Assert.Null(exception);
+    }
+
+    [Theory]
+    [InlineData("create_monster")]
+    [InlineData("spawn_monster")]
+    [InlineData("kill_monster")]
+    [InlineData("add_xp")]
+    [InlineData("complete_quest")]
+    [InlineData("grant_reward")]
+    [InlineData("grant_quest_reward")]
+    [InlineData("add_currency")]
+    [InlineData("spend_currency")]
+    public void GameChangeOperationPolicy_RewardLoopOperationsAreSupportedDangerousAndNotSafe(string operation)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(operation);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.True(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Fact]
+    public void GameChangeOperationPolicy_TransferCurrencyIsKnownDangerousUnsupportedAndNotSafe()
+    {
+        var descriptor = GameChangeOperationPolicy.Describe("transfer_currency");
+
+        Assert.True(descriptor.IsKnown);
+        Assert.False(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Theory]
+    [InlineData("создать_монстра", "create_monster")]
+    [InlineData("заспавнить_монстра", "spawn_monster")]
+    [InlineData("убить_монстра", "kill_monster")]
+    [InlineData("добавить_опыт", "add_xp")]
+    [InlineData("завершить_квест", "complete_quest")]
+    [InlineData("выдать_награду", "grant_reward")]
+    [InlineData("выдать_награду_квеста", "grant_quest_reward")]
+    [InlineData("добавить_валюту", "add_currency")]
+    [InlineData("потратить_валюту", "spend_currency")]
+    [InlineData("передать_валюту", "transfer_currency")]
+    public void GameChangeOperationPolicy_RussianRewardAliasesCanonicalizeCorrectly(string alias, string expectedCanonical)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(alias);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.Equal(expectedCanonical, descriptor.CanonicalOperation);
+    }
+
+    [Fact]
     public void GameChangeOperationPolicy_ApiMethodsExposeKnownSupportedAndSafeState()
     {
         Assert.True(GameChangeOperationPolicy.IsKnown("добавить_запись_журнала"));
