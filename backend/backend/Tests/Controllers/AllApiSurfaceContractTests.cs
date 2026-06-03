@@ -248,6 +248,14 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/play/bootstrap",
             "GET api/game-states/{gameStateId:guid}/travel/options",
 
+            "GET api/game-states/{gameStateId:guid}/time",
+            "POST api/game-states/{gameStateId:guid}/time/advance",
+            "POST api/game-states/{gameStateId:guid}/rest/short",
+            "POST api/game-states/{gameStateId:guid}/rest/long",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/conditions/tick",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/knockout",
+            "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/revive",
+
             "POST api/game-states/{gameStateId:guid}/rolls",
             "POST api/game-states/{gameStateId:guid}/checks/ability",
             "GET api/game-states/{gameStateId:guid}/checks",

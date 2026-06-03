@@ -17,6 +17,7 @@ using backend.Modules.Memory.Application;
 using backend.Modules.Party.Application;
 using backend.Modules.Play.Application;
 using backend.Modules.Story.Application;
+using backend.Modules.Time.Infrastructure;
 using backend.Modules.Travel.Application;
 using backend.Modules.Turns.Application;
 using backend.Modules.World.Application;
@@ -237,6 +238,14 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "complete_quest" => await CompleteQuestAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "grant_reward" => await GrantQuestRewardAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "grant_quest_reward" => await GrantQuestRewardAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "short_rest" => await RestChangeAsync(connection, transaction, accountId, gameStateId, payload, isLongRest: false, cancellationToken),
+            "long_rest" => await RestChangeAsync(connection, transaction, accountId, gameStateId, payload, isLongRest: true, cancellationToken),
+            "advance_time" => await AdvanceTimeChangeAsync(connection, transaction, accountId, gameStateId, payload, cancellationToken),
+            "tick_conditions" => await TickConditionsChangeAsync(connection, transaction, accountId, gameStateId, payload, cancellationToken),
+            "apply_condition_duration" => await ApplyConditionDurationChangeAsync(connection, transaction, accountId, gameStateId, payload, cancellationToken),
+            "kill_character" => await KillCharacterAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "revive_character" => await ReviveCharacterAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "knock_out_character" => await KnockOutCharacterAsync(connection, transaction, gameStateId, payload, cancellationToken),
             _ => throw new RpgValidationException($"Unsupported change operation: {operation}.")
         };
     }
@@ -1412,6 +1421,546 @@ public sealed class GameChangeRepository : IGameChangeRepository
         return JsonSerializer.SerializeToElement(new { operation = "grant_quest_reward", rewardId, questId, characterId, xpAdded = xp, currencyAdded = gold });
     }
 
+    private static async Task<JsonElement> RestChangeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        JsonElement payload,
+        bool isLongRest,
+        CancellationToken cancellationToken)
+    {
+        var characterId = GetOptionalGuid(payload, "characterId", "character_id", "персонажId");
+        var minutes = GetOptionalInt(payload, "minutes", "минуты") ?? (isLongRest ? 480 : 60);
+        if (minutes <= 0 || minutes > 1440)
+        {
+            throw new RpgValidationException("Rest minutes must be between 1 and 1440.");
+        }
+
+        if (!await TimeRepository.EnsureTimeRowAsync(connection, transaction, accountId, gameStateId, cancellationToken))
+        {
+            throw new RpgValidationException("GameState was not found.");
+        }
+
+        if (characterId.HasValue)
+        {
+            await ValidateCharacterAsync(connection, transaction, gameStateId, characterId.Value, cancellationToken);
+        }
+
+        var affectedCharacters = isLongRest
+            ? await ApplyLongRestChangeAsync(connection, transaction, gameStateId, characterId, cancellationToken)
+            : await ApplyShortRestChangeAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        var restoredResources = await RestoreLimitedResourcesChangeAsync(connection, transaction, gameStateId, characterId, isLongRest, cancellationToken);
+        var newTotal = await TimeRepository.AdvanceTimeInternalAsync(connection, transaction, gameStateId, minutes, cancellationToken);
+        var expiredConditions = await TimeRepository.ExpireConditionsAsync(connection, transaction, gameStateId, newTotal, cancellationToken);
+        var reason = GetOptionalString(payload, "reason", "причина") ?? string.Empty;
+        var time = await TimeRepository.SelectTimeAsync(connection, transaction, gameStateId, minutes, reason, expiredConditions, cancellationToken);
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = isLongRest ? "long_rest" : "short_rest",
+            gameStateId,
+            characterId,
+            affectedCharacters,
+            restoredResources,
+            expiredConditions,
+            minutes,
+            reason,
+            time
+        });
+    }
+
+    private static async Task<JsonElement> AdvanceTimeChangeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var minutes = GetOptionalInt(payload, "minutes", "минуты")
+            ?? throw new RpgValidationException("minutes is required.");
+        if (minutes <= 0 || minutes > 43200)
+        {
+            throw new RpgValidationException("minutes must be between 1 and 43200.");
+        }
+
+        if (!await TimeRepository.EnsureTimeRowAsync(connection, transaction, accountId, gameStateId, cancellationToken))
+        {
+            throw new RpgValidationException("GameState was not found.");
+        }
+
+        var tickConditions = GetOptionalBool(payload, "tickConditions", "обновитьСостояния") ?? true;
+        var newTotal = await TimeRepository.AdvanceTimeInternalAsync(connection, transaction, gameStateId, minutes, cancellationToken);
+        var expiredConditions = tickConditions
+            ? await TimeRepository.ExpireConditionsAsync(connection, transaction, gameStateId, newTotal, cancellationToken)
+            : 0;
+        var reason = GetOptionalString(payload, "reason", "причина") ?? string.Empty;
+        var time = await TimeRepository.SelectTimeAsync(connection, transaction, gameStateId, minutes, reason, expiredConditions, cancellationToken);
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "advance_time",
+            minutes,
+            reason,
+            expiredConditions,
+            time
+        });
+    }
+
+    private static async Task<JsonElement> TickConditionsChangeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var characterId = GetOptionalGuid(payload, "characterId", "character_id", "персонажId");
+        var turns = Math.Max(1, GetOptionalInt(payload, "turns", "ходы") ?? 1);
+        if (!await TimeRepository.EnsureTimeRowAsync(connection, transaction, accountId, gameStateId, cancellationToken))
+        {
+            throw new RpgValidationException("GameState was not found.");
+        }
+
+        if (characterId.HasValue)
+        {
+            await ValidateCharacterAsync(connection, transaction, gameStateId, characterId.Value, cancellationToken);
+        }
+
+        var totalMinutes = await GetTotalTimeMinutesAsync(connection, transaction, gameStateId, cancellationToken);
+        var decremented = await DecrementConditionTurnsChangeAsync(connection, transaction, gameStateId, characterId, turns, cancellationToken);
+        var expired = await ExpireConditionsByTurnsChangeAsync(connection, transaction, gameStateId, characterId, totalMinutes, cancellationToken);
+        var activeConditions = await SelectActiveConditionsForChangeAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "tick_conditions",
+            gameStateId,
+            characterId,
+            turns,
+            decrementedConditions = decremented,
+            expiredConditions = expired,
+            activeConditions
+        });
+    }
+
+    private static async Task<JsonElement> ApplyConditionDurationChangeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var conditionId = GetRequiredGuid(payload, "conditionId", "condition_id", "состояниеId");
+        var durationMinutes = GetOptionalInt(payload, "durationMinutes", "duration_minutes", "минуты")
+            ?? throw new RpgValidationException("durationMinutes is required.");
+        if (durationMinutes <= 0)
+        {
+            throw new RpgValidationException("durationMinutes must be greater than 0.");
+        }
+
+        var characterId = GetOptionalGuid(payload, "characterId", "character_id", "персонажId");
+        if (!await TimeRepository.EnsureTimeRowAsync(connection, transaction, accountId, gameStateId, cancellationToken))
+        {
+            throw new RpgValidationException("GameState was not found.");
+        }
+
+        if (characterId.HasValue)
+        {
+            await ValidateCharacterAsync(connection, transaction, gameStateId, characterId.Value, cancellationToken);
+        }
+
+        var totalMinutes = await GetTotalTimeMinutesAsync(connection, transaction, gameStateId, cancellationToken);
+        const string sql = """
+            UPDATE game.conditions
+            SET duration_minutes = @durationMinutes,
+                expires_at_total_minutes = @expiresAtTotalMinutes,
+                is_active = true
+            WHERE game_state_id = @gameStateId
+              AND id = @conditionId
+              AND (@characterId::uuid IS NULL OR player_id = @characterId)
+            RETURNING player_id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("conditionId", conditionId);
+        command.Parameters.AddWithValue("durationMinutes", durationMinutes);
+        command.Parameters.AddWithValue("expiresAtTotalMinutes", totalMinutes + durationMinutes);
+        AddNullableGuid(command, "characterId", characterId);
+        var owner = await command.ExecuteScalarAsync(cancellationToken);
+        if (owner is null or DBNull)
+        {
+            throw new RpgValidationException("Condition was not found.");
+        }
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            operation = "apply_condition_duration",
+            conditionId,
+            characterId = (Guid)owner,
+            durationMinutes,
+            expiresAtTotalMinutes = totalMinutes + durationMinutes
+        });
+    }
+
+    private static async Task<JsonElement> KillCharacterAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+
+        const string sql = """
+            UPDATE game.player_resources
+            SET hp_current = 0,
+                unconscious = true,
+                dead = true,
+                death_saves_failures = GREATEST(death_saves_failures, 3)
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId;
+        """;
+
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                throw new RpgValidationException("Player resources were not found.");
+            }
+        }
+
+        var reason = GetOptionalString(payload, "reason", "причина") ?? string.Empty;
+        await EnsureCharacterConditionAsync(connection, transaction, gameStateId, characterId, "мертв", "death", reason, "kill_character", cancellationToken);
+        return await SelectCharacterStateForChangeAsync(connection, transaction, gameStateId, characterId, "kill_character", reason, cancellationToken);
+    }
+
+    private static async Task<JsonElement> KnockOutCharacterAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+
+        const string sql = """
+            UPDATE game.player_resources
+            SET hp_current = 0,
+                unconscious = true
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId;
+        """;
+
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                throw new RpgValidationException("Player resources were not found.");
+            }
+        }
+
+        var reason = GetOptionalString(payload, "reason", "причина") ?? string.Empty;
+        await EnsureCharacterConditionAsync(connection, transaction, gameStateId, characterId, "повержен", "control", reason, "knock_out_character", cancellationToken);
+        return await SelectCharacterStateForChangeAsync(connection, transaction, gameStateId, characterId, "knock_out_character", reason, cancellationToken);
+    }
+
+    private static async Task<JsonElement> ReviveCharacterAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid gameStateId,
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        var hp = Math.Max(1, GetOptionalInt(payload, "hp", "хп") ?? 1);
+        var clearDead = GetOptionalBool(payload, "clearDead", "очиститьСмерть") ?? true;
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+
+        const string sql = """
+            UPDATE game.player_resources
+            SET hp_current = CASE
+                    WHEN dead AND @clearDead = false THEN hp_current
+                    ELSE GREATEST(hp_current, @hp)
+                END,
+                unconscious = CASE
+                    WHEN dead AND @clearDead = false THEN unconscious
+                    ELSE false
+                END,
+                dead = CASE WHEN @clearDead THEN false ELSE dead END,
+                death_saves_successes = 0,
+                death_saves_failures = 0
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId;
+        """;
+
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("gameStateId", gameStateId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("hp", hp);
+            command.Parameters.AddWithValue("clearDead", clearDead);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                throw new RpgValidationException("Player resources were not found.");
+            }
+        }
+
+        await InactivateCharacterConditionsAsync(connection, transaction, gameStateId, characterId, ["повержен", "мертв"], cancellationToken);
+        var reason = GetOptionalString(payload, "reason", "причина") ?? string.Empty;
+        return await SelectCharacterStateForChangeAsync(connection, transaction, gameStateId, characterId, "revive_character", reason, cancellationToken);
+    }
+
+    private static async Task<int> ApplyShortRestChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.player_resources
+            SET hp_current = CASE
+                    WHEN dead THEN hp_current
+                    ELSE LEAST(hp_max, hp_current + GREATEST(1, CEIL(hp_max * 0.25)::int))
+                END,
+                action_points_current = action_points_max,
+                unconscious = CASE WHEN dead THEN unconscious ELSE false END
+            WHERE game_state_id = @gameStateId
+              AND (@characterId::uuid IS NULL OR player_id = @characterId);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        AddNullableGuid(command, "characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> ApplyLongRestChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.player_resources
+            SET hp_current = CASE WHEN dead THEN hp_current ELSE hp_max END,
+                mana_current = mana_max,
+                action_points_current = action_points_max,
+                unconscious = CASE WHEN dead THEN unconscious ELSE false END,
+                death_saves_successes = 0,
+                death_saves_failures = 0
+            WHERE game_state_id = @gameStateId
+              AND (@characterId::uuid IS NULL OR player_id = @characterId);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        AddNullableGuid(command, "characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> RestoreLimitedResourcesChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, bool isLongRest, CancellationToken cancellationToken)
+    {
+        var sql = isLongRest
+            ? """
+                UPDATE game.limited_resources
+                SET current_value = max_value
+                WHERE game_state_id = @gameStateId
+                  AND (@characterId::uuid IS NULL OR player_id = @characterId);
+            """
+            : """
+                UPDATE game.limited_resources
+                SET current_value = max_value
+                WHERE game_state_id = @gameStateId
+                  AND (@characterId::uuid IS NULL OR player_id = @characterId)
+                  AND lower(recovery) IN ('short_rest', 'short', 'rest');
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        AddNullableGuid(command, "characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> GetTotalTimeMinutesAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT total_minutes FROM game.game_time WHERE game_state_id = @gameStateId LIMIT 1;";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken) ?? 0);
+    }
+
+    private static async Task<int> DecrementConditionTurnsChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, int turns, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.conditions
+            SET remaining_turns = GREATEST(0, remaining_turns - @turns)
+            WHERE game_state_id = @gameStateId
+              AND is_active = true
+              AND is_permanent = false
+              AND remaining_turns IS NOT NULL
+              AND (@characterId::uuid IS NULL OR player_id = @characterId);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("turns", turns);
+        AddNullableGuid(command, "characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> ExpireConditionsByTurnsChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, int totalMinutes, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.conditions
+            SET is_active = false
+            WHERE game_state_id = @gameStateId
+              AND is_active = true
+              AND is_permanent = false
+              AND (@characterId::uuid IS NULL OR player_id = @characterId)
+              AND (
+                  (remaining_turns IS NOT NULL AND remaining_turns <= 0)
+                  OR (expires_at_total_minutes IS NOT NULL AND expires_at_total_minutes <= @totalMinutes)
+              );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("totalMinutes", totalMinutes);
+        AddNullableGuid(command, "characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureCharacterConditionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, string name, string type, string description, string source, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO game.conditions (game_state_id, player_id, name, type, description, source, is_active)
+            SELECT @gameStateId, @characterId, @name, @type, @description, @source, true
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM game.conditions
+                WHERE game_state_id = @gameStateId
+                  AND player_id = @characterId
+                  AND lower(name) = lower(@name)
+                  AND is_active = true
+            );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("name", name);
+        command.Parameters.AddWithValue("type", type);
+        command.Parameters.AddWithValue("description", string.IsNullOrWhiteSpace(description) ? string.Empty : description);
+        command.Parameters.AddWithValue("source", source);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task InactivateCharacterConditionsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, IReadOnlyList<string> names, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE game.conditions
+            SET is_active = false
+            WHERE game_state_id = @gameStateId
+              AND player_id = @characterId
+              AND is_active = true
+              AND lower(name) = ANY(@names);
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("names", names.Select(name => name.ToLowerInvariant()).ToArray());
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<JsonElement>> SelectActiveConditionsForChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid? characterId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT jsonb_build_object(
+                'id', c.id,
+                'gameStateId', c.game_state_id,
+                'characterId', c.player_id,
+                'name', c.name,
+                'type', c.type,
+                'description', c.description,
+                'source', c.source,
+                'remainingTurns', c.remaining_turns,
+                'durationMinutes', c.duration_minutes,
+                'expiresAtTotalMinutes', c.expires_at_total_minutes,
+                'isActive', c.is_active,
+                'effects', c.effects,
+                'tags', c.tags,
+                'createdAt', c.created_at
+            )::text
+            FROM game.conditions c
+            WHERE c.game_state_id = @gameStateId
+              AND c.is_active = true
+              AND (@characterId::uuid IS NULL OR c.player_id = @characterId)
+            ORDER BY c.created_at, c.id;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        AddNullableGuid(command, "characterId", characterId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var result = new List<JsonElement>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(RpgDbJson.ParseElement(reader.GetString(0)));
+        }
+
+        return result;
+    }
+
+    private static async Task<JsonElement> SelectCharacterStateForChangeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, string operation, string reason, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT jsonb_build_object(
+                'operation', @operation,
+                'reason', @reason,
+                'gameStateId', pr.game_state_id,
+                'characterId', pr.player_id,
+                'hpCurrent', pr.hp_current,
+                'hpMax', pr.hp_max,
+                'unconscious', pr.unconscious,
+                'dead', pr.dead,
+                'deathSavesSuccesses', pr.death_saves_successes,
+                'deathSavesFailures', pr.death_saves_failures,
+                'activeConditions', COALESCE((
+                    SELECT jsonb_agg(jsonb_build_object(
+                        'id', c.id,
+                        'name', c.name,
+                        'type', c.type,
+                        'remainingTurns', c.remaining_turns,
+                        'durationMinutes', c.duration_minutes,
+                        'expiresAtTotalMinutes', c.expires_at_total_minutes,
+                        'source', c.source
+                    ) ORDER BY c.created_at, c.id)
+                    FROM game.conditions c
+                    WHERE c.game_state_id = pr.game_state_id
+                      AND c.player_id = pr.player_id
+                      AND c.is_active = true
+                ), '[]'::jsonb)
+            )::text
+            FROM game.player_resources pr
+            WHERE pr.game_state_id = @gameStateId
+              AND pr.player_id = @characterId
+            LIMIT 1;
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("operation", operation);
+        command.Parameters.AddWithValue("reason", string.IsNullOrWhiteSpace(reason) ? string.Empty : reason);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull
+            ? throw new RpgValidationException("Player resources were not found.")
+            : RpgDbJson.ParseElement(value.ToString()!);
+    }
+
     private static async Task EnsureWealthAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -1757,6 +2306,12 @@ public sealed class GameChangeRepository : IGameChangeRepository
     private static object DbInt(int? value) => value.HasValue ? value.Value : DBNull.Value;
 
     private static object DbBool(bool? value) => value.HasValue ? value.Value : DBNull.Value;
+
+    private static void AddNullableGuid(NpgsqlCommand command, string name, Guid? value)
+    {
+        var parameter = command.Parameters.Add(name, NpgsqlDbType.Uuid);
+        parameter.Value = value.HasValue ? value.Value : DBNull.Value;
+    }
 
     private static void AddJsonb(NpgsqlCommand command, string name, string? json)
     {

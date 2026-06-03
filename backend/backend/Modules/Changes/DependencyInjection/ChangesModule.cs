@@ -45,6 +45,14 @@ public static class ChangesModule
         services.AddScoped<IGameChangeHandler, CompleteQuestChangeHandler>();
         services.AddScoped<IGameChangeHandler, GrantRewardChangeHandler>();
         services.AddScoped<IGameChangeHandler, GrantQuestRewardChangeHandler>();
+        services.AddScoped<IGameChangeHandler, ShortRestChangeHandler>();
+        services.AddScoped<IGameChangeHandler, LongRestChangeHandler>();
+        services.AddScoped<IGameChangeHandler, AdvanceTimeChangeHandler>();
+        services.AddScoped<IGameChangeHandler, TickConditionsChangeHandler>();
+        services.AddScoped<IGameChangeHandler, ApplyConditionDurationChangeHandler>();
+        services.AddScoped<IGameChangeHandler, KillCharacterChangeHandler>();
+        services.AddScoped<IGameChangeHandler, ReviveCharacterChangeHandler>();
+        services.AddScoped<IGameChangeHandler, KnockOutCharacterChangeHandler>();
 
         return services;
     }

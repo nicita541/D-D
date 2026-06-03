@@ -58,4 +58,8 @@ public sealed record PlayStateResponse(
     IReadOnlyList<JsonElement> Rewards,
     JsonElement? Progression,
     JsonElement? Currency,
+    JsonElement? Time,
+    IReadOnlyList<JsonElement> ActiveConditions,
+    JsonElement? RestAvailable,
+    IReadOnlyList<JsonElement> CharacterStates,
     DateTimeOffset GeneratedAt);

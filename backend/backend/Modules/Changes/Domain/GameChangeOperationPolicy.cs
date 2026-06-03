@@ -200,7 +200,14 @@ public static class GameChangeOperationPolicy
         ["продвинуть_время"] = "advance_time",
 
         ["kill_character"] = "kill_character",
-        ["убить_персонажа"] = "kill_character"
+        ["убить_персонажа"] = "kill_character",
+
+        ["revive_character"] = "revive_character",
+        ["оживить_персонажа"] = "revive_character",
+
+        ["knock_out_character"] = "knock_out_character",
+        ["нокаутировать_персонажа"] = "knock_out_character",
+        ["вырубить_персонажа"] = "knock_out_character"
     };
 
     private static readonly HashSet<string> SafeOperations = new(StringComparer.OrdinalIgnoreCase)
@@ -265,7 +272,9 @@ public static class GameChangeOperationPolicy
         "spawn_monster",
         "kill_monster",
         "complete_quest",
-        "kill_character"
+        "kill_character",
+        "revive_character",
+        "knock_out_character"
     };
 
     private static readonly HashSet<string> SupportedOperations = new(StringComparer.OrdinalIgnoreCase)
@@ -304,7 +313,15 @@ public static class GameChangeOperationPolicy
         "grant_reward",
         "grant_quest_reward",
         "add_currency",
-        "spend_currency"
+        "spend_currency",
+        "short_rest",
+        "long_rest",
+        "advance_time",
+        "tick_conditions",
+        "apply_condition_duration",
+        "kill_character",
+        "revive_character",
+        "knock_out_character"
     };
 
     public static IReadOnlyCollection<string> AllowedAiOperations => Aliases.Keys.ToArray();

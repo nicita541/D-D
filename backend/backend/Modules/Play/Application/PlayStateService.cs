@@ -14,6 +14,7 @@ using backend.Modules.Combat.Domain;
 using backend.Modules.Combat.Infrastructure;
 using backend.Modules.Economy.Application;
 using backend.Modules.World.Contracts;
+using backend.Modules.Conditions.Application;
 using backend.Modules.Ai.Application;
 using backend.Modules.Campaigns.Application;
 using backend.Modules.Changes.Application;
@@ -25,6 +26,7 @@ using backend.Modules.Memory.Application;
 using backend.Modules.Party.Application;
 using backend.Modules.Play.Application;
 using backend.Modules.Story.Application;
+using backend.Modules.Time.Application;
 using backend.Modules.Travel.Application;
 using backend.Modules.Turns.Application;
 using backend.Modules.World.Application;
@@ -43,6 +45,8 @@ public sealed class PlayStateService : IPlayStateService
     private readonly ICharacterDomainService _characterDomain;
     private readonly IWorldService _world;
     private readonly IEconomyService _economy;
+    private readonly ITimeService _time;
+    private readonly IConditionStateService _conditions;
 
     public PlayStateService(
         IGameStateService gameStates,
@@ -54,7 +58,9 @@ public sealed class PlayStateService : IPlayStateService
         ICombatService combat,
         ICharacterDomainService characterDomain,
         IWorldService world,
-        IEconomyService economy)
+        IEconomyService economy,
+        ITimeService time,
+        IConditionStateService conditions)
     {
         _gameStates = gameStates;
         _characters = characters;
@@ -66,6 +72,8 @@ public sealed class PlayStateService : IPlayStateService
         _characterDomain = characterDomain;
         _world = world;
         _economy = economy;
+        _time = time;
+        _conditions = conditions;
     }
 
     public async Task<RpgResult<PlayStateResponse>> BuildAsync(
@@ -93,6 +101,10 @@ public sealed class PlayStateService : IPlayStateService
         var loot = await GetLootAsync(accountId, gameStateId, cancellationToken);
         var currency = await GetCurrencyAsync(accountId, gameStateId, selectedCharacterId, cancellationToken);
         var progression = GetProgression(characters, selectedCharacterId);
+        var time = await GetTimeAsync(accountId, gameStateId, cancellationToken);
+        var activeConditions = await GetActiveConditionsAsync(accountId, gameStateId, cancellationToken);
+        var characterStates = await GetCharacterStatesAsync(accountId, gameStateId, cancellationToken);
+        var restAvailable = GetRestAvailable(characterStates, time);
         var memoryValue = memory.Status == RpgResultStatus.Ok
             ? (JsonElement?)memory.Value
             : null;
@@ -128,9 +140,51 @@ public sealed class PlayStateService : IPlayStateService
             Array.Empty<JsonElement>(),
             progression,
             currency,
+            time,
+            activeConditions,
+            restAvailable,
+            characterStates,
             DateTimeOffset.UtcNow);
 
         return RpgResult<PlayStateResponse>.Ok(response);
+    }
+
+    private async Task<JsonElement?> GetTimeAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var time = await _time.GetTimeAsync(accountId, gameStateId, cancellationToken);
+        return time.Status == RpgResultStatus.Ok ? time.Value : null;
+    }
+
+    private async Task<IReadOnlyList<JsonElement>> GetActiveConditionsAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var conditions = await _conditions.GetActiveConditionsAsync(accountId, gameStateId, cancellationToken);
+        return conditions.Status == RpgResultStatus.Ok
+            ? conditions.Value ?? Array.Empty<JsonElement>()
+            : Array.Empty<JsonElement>();
+    }
+
+    private async Task<IReadOnlyList<JsonElement>> GetCharacterStatesAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        var states = await _conditions.GetCharacterStatesAsync(accountId, gameStateId, cancellationToken);
+        return states.Status == RpgResultStatus.Ok
+            ? states.Value ?? Array.Empty<JsonElement>()
+            : Array.Empty<JsonElement>();
+    }
+
+    private static JsonElement GetRestAvailable(IReadOnlyList<JsonElement> characterStates, JsonElement? time)
+    {
+        var hasLivingCharacter = characterStates.Any(state =>
+            state.ValueKind == JsonValueKind.Object
+            && (!state.TryGetProperty("dead", out var dead)
+                || dead.ValueKind is not JsonValueKind.True));
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            shortRest = hasLivingCharacter,
+            longRest = hasLivingCharacter,
+            reason = hasLivingCharacter ? string.Empty : "Нет живых персонажей.",
+            currentTime = time
+        });
     }
 
     private async Task<IReadOnlyList<JsonElement>> GetMonstersAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)

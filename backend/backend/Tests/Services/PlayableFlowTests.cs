@@ -133,6 +133,43 @@ public sealed class PlayableFlowTests
         Assert.False(descriptor.IsSafeAutoApply);
     }
 
+    [Theory]
+    [InlineData("short_rest")]
+    [InlineData("long_rest")]
+    [InlineData("advance_time")]
+    [InlineData("tick_conditions")]
+    [InlineData("apply_condition_duration")]
+    [InlineData("kill_character")]
+    [InlineData("revive_character")]
+    [InlineData("knock_out_character")]
+    public void GameChangeOperationPolicy_RestTimeConditionOperationsAreSupportedDangerousAndNotSafe(string operation)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(operation);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.True(descriptor.IsSupported);
+        Assert.Equal(GameChangeOperationClass.Dangerous, descriptor.Class);
+        Assert.False(descriptor.IsSafeAutoApply);
+    }
+
+    [Theory]
+    [InlineData("короткий_отдых", "short_rest")]
+    [InlineData("долгий_отдых", "long_rest")]
+    [InlineData("продвинуть_время", "advance_time")]
+    [InlineData("тик_состояний", "tick_conditions")]
+    [InlineData("применить_длительность_состояния", "apply_condition_duration")]
+    [InlineData("убить_персонажа", "kill_character")]
+    [InlineData("оживить_персонажа", "revive_character")]
+    [InlineData("нокаутировать_персонажа", "knock_out_character")]
+    [InlineData("вырубить_персонажа", "knock_out_character")]
+    public void GameChangeOperationPolicy_RussianRestTimeConditionAliasesCanonicalizeCorrectly(string alias, string expectedCanonical)
+    {
+        var descriptor = GameChangeOperationPolicy.Describe(alias);
+
+        Assert.True(descriptor.IsKnown);
+        Assert.Equal(expectedCanonical, descriptor.CanonicalOperation);
+    }
+
     [Fact]
     public void GameChangeOperationPolicy_TransferCurrencyIsKnownDangerousUnsupportedAndNotSafe()
     {
@@ -461,6 +498,10 @@ public sealed class PlayableFlowTests
                 Array.Empty<JsonElement>(),
                 null,
                 null,
+                null,
+                Array.Empty<JsonElement>(),
+                null,
+                Array.Empty<JsonElement>(),
                 DateTimeOffset.UtcNow)));
     }
 }

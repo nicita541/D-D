@@ -60,3 +60,11 @@ public sealed class SpendCurrencyChangeHandler() : RepositoryBackedChangeHandler
 public sealed class CompleteQuestChangeHandler() : RepositoryBackedChangeHandlerBase("complete_quest", GameChangeOperationClass.Dangerous, true);
 public sealed class GrantRewardChangeHandler() : RepositoryBackedChangeHandlerBase("grant_reward", GameChangeOperationClass.Dangerous, true);
 public sealed class GrantQuestRewardChangeHandler() : RepositoryBackedChangeHandlerBase("grant_quest_reward", GameChangeOperationClass.Dangerous, true);
+public sealed class ShortRestChangeHandler() : RepositoryBackedChangeHandlerBase("short_rest", GameChangeOperationClass.Dangerous, true);
+public sealed class LongRestChangeHandler() : RepositoryBackedChangeHandlerBase("long_rest", GameChangeOperationClass.Dangerous, true);
+public sealed class AdvanceTimeChangeHandler() : RepositoryBackedChangeHandlerBase("advance_time", GameChangeOperationClass.Dangerous, true);
+public sealed class TickConditionsChangeHandler() : RepositoryBackedChangeHandlerBase("tick_conditions", GameChangeOperationClass.Dangerous, true);
+public sealed class ApplyConditionDurationChangeHandler() : RepositoryBackedChangeHandlerBase("apply_condition_duration", GameChangeOperationClass.Dangerous, true);
+public sealed class KillCharacterChangeHandler() : RepositoryBackedChangeHandlerBase("kill_character", GameChangeOperationClass.Dangerous, true);
+public sealed class ReviveCharacterChangeHandler() : RepositoryBackedChangeHandlerBase("revive_character", GameChangeOperationClass.Dangerous, true);
+public sealed class KnockOutCharacterChangeHandler() : RepositoryBackedChangeHandlerBase("knock_out_character", GameChangeOperationClass.Dangerous, true);
