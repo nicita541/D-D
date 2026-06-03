@@ -8,8 +8,24 @@ services:
       - ollama_data:/root/.ollama
     gpus: all
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      OLLAMA_MODEL: qwen2.5:7b
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      "ollama serve &
+      OLLAMA_PID=$$!;
+      echo 'Waiting for Ollama server...';
+      until ollama list >/dev/null 2>&1; do sleep 2; done;
+      echo 'Checking model qwen2.5:7b...';
+      if ! ollama show qwen2.5:7b >/dev/null 2>&1; then
+        echo 'Model qwen2.5:7b not found. Pulling...';
+        ollama pull qwen2.5:7b;
+      else
+        echo 'Model qwen2.5:7b already exists.';
+      fi;
+      echo 'Ollama is ready.';
+      wait $$OLLAMA_PID"
     restart: unless-stopped
 
   postgres:
@@ -30,7 +46,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: backend/backend/Dockerfile
+      dockerfile: backend/Dockerfile
     container_name: dnd-backend
     ports:
       - "8080:8080"
@@ -40,7 +56,15 @@ services:
 
       ConnectionStrings__DndDatabase: Host=postgres;Port=5432;Database=dnd;Username=dnd_user;Password=dnd_password
 
+      Jwt__Issuer: DndBackend
+      Jwt__Audience: DndClient
+      Jwt__Secret: DEV_ONLY_SUPER_SECRET_KEY_CHANGE_ME_1234567890
+      Jwt__AccessTokenMinutes: 30
+      Jwt__RefreshTokenDays: 30
+
       Ollama__BaseUrl: http://llm:11434
+      Ollama__Model: qwen2.5:7b
+      Ollama__TimeoutSeconds: 180
     depends_on:
       - postgres
       - llm
