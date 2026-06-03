@@ -378,8 +378,8 @@ public sealed class PlayableFlowTests
         public Task<JsonElement?> GetGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
             => Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new { id = gameStateId }));
 
-        public Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
-            => Task.FromResult(Guid.NewGuid());
+        public Task<Guid?> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
+            => Task.FromResult<Guid?>(Guid.NewGuid());
 
         public Task<bool> DeleteGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
             => Task.FromResult(true);

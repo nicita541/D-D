@@ -83,6 +83,19 @@ public sealed class RpgControllerTests
     }
 
     [Fact]
+    public async Task GameStatesController_Create_ReturnsUnauthorized_WhenTokenAccountNoLongerExists()
+    {
+        var service = new FakeGameStateService { CreatedId = null };
+        var controller = new GameStatesController(service, new FakeCurrentUserService(Guid.NewGuid()));
+
+        var result = await controller.CreateGameState(new CreateGameStateRequest { Name = "Save" }, CancellationToken.None);
+
+        var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        var response = Assert.IsType<MessageResponse>(unauthorized.Value);
+        Assert.Equal("Сессия устарела. Войдите заново.", response.Message);
+    }
+
+    [Fact]
     public async Task GameStatesController_Get_ReturnsNotFound_ForMissingOrForeignGameState()
     {
         var controller = new GameStatesController(new FakeGameStateService(), new FakeCurrentUserService(Guid.NewGuid()));
@@ -240,7 +253,7 @@ public sealed class RpgControllerTests
 
     private sealed class FakeGameStateService : IGameStateService
     {
-        public Guid CreatedId { get; init; } = Guid.NewGuid();
+        public Guid? CreatedId { get; init; } = Guid.NewGuid();
 
         public Guid LastAccountId { get; private set; }
 
@@ -258,7 +271,7 @@ public sealed class RpgControllerTests
             return Task.FromResult<JsonElement?>(null);
         }
 
-        public Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
+        public Task<Guid?> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
         {
             LastAccountId = accountId;
             LastName = name;

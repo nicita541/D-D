@@ -55,11 +55,17 @@ public sealed class GameStatesController : ControllerBase
 
     [HttpPost]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(MessageResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<OperationResponse>> CreateGameState([FromBody] CreateGameStateRequest? request, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
         var id = await _gameStates.CreateGameStateAsync(current.AccountId, request?.Name, cancellationToken);
-        return CreatedAtAction(nameof(GetGameState), new { gameStateId = id }, new OperationResponse { Id = id, Message = "GameState создан" });
+        if (!id.HasValue)
+        {
+            return Unauthorized(new MessageResponse { Message = "Сессия устарела. Войдите заново." });
+        }
+
+        return CreatedAtAction(nameof(GetGameState), new { gameStateId = id.Value }, new OperationResponse { Id = id.Value, Message = "GameState создан" });
     }
 
     [HttpDelete("{gameStateId:guid}")]

@@ -36,14 +36,15 @@ export function PlayPage() {
     refetchInterval: 15000,
     enabled: Boolean(gameStateId),
   });
+  const state = useMemo(() => normalizePlayState(status.data), [status.data]);
 
   const selectedCharacter = useMemo(() => {
-    const characters = status.data?.characters ?? [];
+    const characters = state?.characters ?? [];
     if (selectedCharacterId) {
       return characters.find((character) => character.id === selectedCharacterId) ?? characters[0];
     }
     return characters[0];
-  }, [selectedCharacterId, status.data?.characters]);
+  }, [selectedCharacterId, state?.characters]);
 
   const activeCharacterId = selectedCharacterId || idOf(selectedCharacter?.id) || '';
   function selectCharacter(id: string) {
@@ -71,7 +72,6 @@ export function PlayPage() {
     );
   }
 
-  const state = status.data;
   if (!state || state.characters.length === 0) {
     return (
       <AppShell
@@ -131,6 +131,31 @@ export function PlayPage() {
       </div>
     </AppShell>
   );
+}
+
+function normalizePlayState(state: PlayStateResponse | undefined): PlayStateResponse | undefined {
+  if (!state || typeof state !== 'object') {
+    return undefined;
+  }
+
+  return {
+    ...state,
+    mode: textOf(state.mode, 'narration'),
+    characters: arrayOfObjects(state.characters),
+    recentTurns: arrayOfObjects(state.recentTurns),
+    pendingChanges: arrayOfObjects(state.pendingChanges),
+    mechanicRequests: arrayOfObjects(state.mechanicRequests),
+    inventory: arrayOfObjects(state.inventory),
+    appliedChanges: Array.isArray(state.appliedChanges) ? state.appliedChanges : [],
+    skippedChanges: Array.isArray(state.skippedChanges) ? state.skippedChanges : [],
+    failedChanges: Array.isArray(state.failedChanges) ? state.failedChanges : [],
+    monsters: arrayOfObjects(state.monsters),
+    loot: arrayOfObjects(state.loot),
+    rewards: arrayOfObjects(state.rewards),
+    activeConditions: arrayOfObjects(state.activeConditions),
+    characterStates: arrayOfObjects(state.characterStates),
+    generatedAt: textOf(state.generatedAt, new Date().toISOString()),
+  };
 }
 
 function BackButton({ onClick }: { onClick: () => void }) {

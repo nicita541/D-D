@@ -8,7 +8,7 @@ public interface IGameStateRepository
 
     Task<JsonElement?> GetGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken);
 
-    Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken);
+    Task<Guid?> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken);
 
     Task<bool> DeleteGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken);
 }

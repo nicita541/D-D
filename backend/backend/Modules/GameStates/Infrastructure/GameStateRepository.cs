@@ -56,13 +56,25 @@ public sealed class GameStateRepository : IGameStateRepository
         return value is null or DBNull ? null : RpgDbJson.ParseElement(value.ToString()!);
     }
 
-    public async Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
+    public async Task<Guid?> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
+            const string accountSql = "SELECT EXISTS (SELECT 1 FROM auth.accounts WHERE id = @accountId);";
+            await using (var accountCommand = new NpgsqlCommand(accountSql, connection, transaction))
+            {
+                accountCommand.Parameters.AddWithValue("accountId", accountId);
+                var accountExists = (bool)(await accountCommand.ExecuteScalarAsync(cancellationToken) ?? false);
+                if (!accountExists)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return null;
+                }
+            }
+
             const string sql = "SELECT game.create_new_game(@accountId, @name);";
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("accountId", accountId);

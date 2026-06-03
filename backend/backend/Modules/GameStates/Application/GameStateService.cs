@@ -31,7 +31,7 @@ public sealed class GameStateService : IGameStateService
     public Task<JsonElement?> GetGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
         => _repository.GetGameStateAsync(accountId, gameStateId, cancellationToken);
 
-    public Task<Guid> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
+    public Task<Guid?> CreateGameStateAsync(Guid accountId, string? name, CancellationToken cancellationToken)
         => _repository.CreateGameStateAsync(accountId, string.IsNullOrWhiteSpace(name) ? "Новая игра" : name.Trim(), cancellationToken);
 
     public Task<bool> DeleteGameStateAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
