@@ -1,5 +1,6 @@
 using System.Text.Json;
 using backend.Modules.Characters.Contracts;
+using backend.Modules.Characters.Domain;
 using backend.Shared.Contracts;
 using backend.Shared.Kernel;
 using backend.Infrastructure.Database;
@@ -954,20 +955,48 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
     public Task<bool?> UpdateProgressionAsync(Guid accountId, Guid gameStateId, Guid characterId, CharacterProgressionRequest request, CancellationToken cancellationToken)
     {
         const string sql = """
-            INSERT INTO game.player_progression (player_id, game_state_id, level, experience, experience_to_next_level)
-            VALUES (@characterId, @gameStateId, @level, @experience, @experienceToNextLevel)
+            INSERT INTO game.player_progression
+            (
+                player_id,
+                game_state_id,
+                level,
+                experience,
+                experience_to_next_level,
+                level_up_available,
+                proficiency_bonus,
+                updated_at
+            )
+            VALUES
+            (
+                @characterId,
+                @gameStateId,
+                @level,
+                @experience,
+                @experienceToNextLevel,
+                @levelUpAvailable,
+                @proficiencyBonus,
+                now()
+            )
             ON CONFLICT (player_id)
             DO UPDATE SET
                 level = EXCLUDED.level,
                 experience = EXCLUDED.experience,
-                experience_to_next_level = EXCLUDED.experience_to_next_level;
+                experience_to_next_level = EXCLUDED.experience_to_next_level,
+                level_up_available = EXCLUDED.level_up_available,
+                proficiency_bonus = EXCLUDED.proficiency_bonus,
+                updated_at = now();
         """;
 
         return UpsertSingleRowAsync(accountId, gameStateId, characterId, sql, command =>
         {
-            command.Parameters.AddWithValue("level", Math.Max(1, request.Level));
-            command.Parameters.AddWithValue("experience", Math.Max(0, request.Experience));
-            command.Parameters.AddWithValue("experienceToNextLevel", Math.Max(0, request.ExperienceToNextLevel));
+            var level = Math.Max(1, request.Level);
+            var experience = Math.Max(0, request.Experience);
+            var nextThreshold = ProgressionRules.GetNextLevelThreshold(level);
+            command.Parameters.AddWithValue("level", level);
+            command.Parameters.AddWithValue("experience", experience);
+            command.Parameters.AddWithValue("experienceToNextLevel", nextThreshold ?? Math.Max(0, request.ExperienceToNextLevel));
+            command.Parameters.AddWithValue("levelUpAvailable", nextThreshold.HasValue && experience >= nextThreshold.Value);
+            command.Parameters.AddWithValue("proficiencyBonus", ProgressionRules.GetProficiencyBonus(level));
         }, cancellationToken);
     }
 

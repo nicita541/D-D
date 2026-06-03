@@ -35,6 +35,15 @@ public sealed class CharacterProgressionController : ControllerBase
         _currentUser = currentUser;
     }
 
+    [HttpGet("progression")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetProgression(Guid gameStateId, Guid characterId, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        return ToActionResult(await _progression.GetProgressionAsync(current.AccountId, gameStateId, characterId, cancellationToken));
+    }
+
     [HttpPost("experience")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

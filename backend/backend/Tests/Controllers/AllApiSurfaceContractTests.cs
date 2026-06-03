@@ -311,6 +311,7 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/combat/end",
 
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/experience",
+            "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/progression",
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/xp",
             "POST api/game-states/{gameStateId:guid}/characters/{characterId:guid}/level-up",
             "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}/currency",

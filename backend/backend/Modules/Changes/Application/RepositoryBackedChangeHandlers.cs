@@ -55,6 +55,7 @@ public sealed class CreateMonsterChangeHandler() : RepositoryBackedChangeHandler
 public sealed class SpawnMonsterChangeHandler() : RepositoryBackedChangeHandlerBase("spawn_monster", GameChangeOperationClass.Dangerous, true);
 public sealed class KillMonsterChangeHandler() : RepositoryBackedChangeHandlerBase("kill_monster", GameChangeOperationClass.Dangerous, true);
 public sealed class AddXpChangeHandler() : RepositoryBackedChangeHandlerBase("add_xp", GameChangeOperationClass.Dangerous, true);
+public sealed class LevelUpChangeHandler() : RepositoryBackedChangeHandlerBase("level_up", GameChangeOperationClass.Dangerous, true);
 public sealed class AddCurrencyChangeHandler() : RepositoryBackedChangeHandlerBase("add_currency", GameChangeOperationClass.Dangerous, true);
 public sealed class SpendCurrencyChangeHandler() : RepositoryBackedChangeHandlerBase("spend_currency", GameChangeOperationClass.Dangerous, true);
 public sealed class CompleteQuestChangeHandler() : RepositoryBackedChangeHandlerBase("complete_quest", GameChangeOperationClass.Dangerous, true);

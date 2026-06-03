@@ -118,6 +118,7 @@ public sealed class PlayableFlowTests
     [InlineData("spawn_monster")]
     [InlineData("kill_monster")]
     [InlineData("add_xp")]
+    [InlineData("level_up")]
     [InlineData("complete_quest")]
     [InlineData("grant_reward")]
     [InlineData("grant_quest_reward")]
@@ -186,6 +187,7 @@ public sealed class PlayableFlowTests
     [InlineData("заспавнить_монстра", "spawn_monster")]
     [InlineData("убить_монстра", "kill_monster")]
     [InlineData("добавить_опыт", "add_xp")]
+    [InlineData("повысить_уровень", "level_up")]
     [InlineData("завершить_квест", "complete_quest")]
     [InlineData("выдать_награду", "grant_reward")]
     [InlineData("выдать_награду_квеста", "grant_quest_reward")]
@@ -212,6 +214,8 @@ public sealed class PlayableFlowTests
         Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("move_party_to_location"));
         Assert.True(GameChangeOperationPolicy.IsSupported("spawn_monster"));
         Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("spawn_monster"));
+        Assert.True(GameChangeOperationPolicy.IsSupported("level_up"));
+        Assert.False(GameChangeOperationPolicy.IsSafeAutoApply("level_up"));
     }
 
     [Fact]

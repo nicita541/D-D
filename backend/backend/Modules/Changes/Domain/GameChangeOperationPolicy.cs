@@ -309,6 +309,7 @@ public static class GameChangeOperationPolicy
         "spawn_monster",
         "kill_monster",
         "add_xp",
+        "level_up",
         "complete_quest",
         "grant_reward",
         "grant_quest_reward",

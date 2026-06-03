@@ -40,6 +40,7 @@ public static class ChangesModule
         services.AddScoped<IGameChangeHandler, SpawnMonsterChangeHandler>();
         services.AddScoped<IGameChangeHandler, KillMonsterChangeHandler>();
         services.AddScoped<IGameChangeHandler, AddXpChangeHandler>();
+        services.AddScoped<IGameChangeHandler, LevelUpChangeHandler>();
         services.AddScoped<IGameChangeHandler, AddCurrencyChangeHandler>();
         services.AddScoped<IGameChangeHandler, SpendCurrencyChangeHandler>();
         services.AddScoped<IGameChangeHandler, CompleteQuestChangeHandler>();

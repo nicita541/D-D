@@ -1,5 +1,6 @@
 using System.Text.Json;
 using backend.Modules.Characters.Contracts;
+using backend.Modules.Characters.Domain;
 using backend.Infrastructure.Database;
 using Npgsql;
 
@@ -252,6 +253,17 @@ public sealed class CharacterRepository : ICharacterRepository
                 '����', COALESCE(pp.experience, 0),
                 '����������������������', COALESCE(pp.experience_to_next_level, 300)
             ),
+            'progression', jsonb_build_object(
+                'level', COALESCE(pp.level, 1),
+                'experience', COALESCE(pp.experience, 0),
+                'experienceToNextLevel', COALESCE(pp.experience_to_next_level, 300),
+                'levelUpAvailable', COALESCE(pp.level_up_available, false),
+                'canLevelUp', COALESCE(pp.level_up_available, false),
+                'proficiencyBonus', COALESCE(pp.proficiency_bonus, cs.proficiency_bonus, 2),
+                'nextLevelThreshold', NULLIF(COALESCE(pp.experience_to_next_level, 300), 0),
+                'hpMax', COALESCE(pr.hp_max, 1),
+                'hpCurrent', COALESCE(pr.hp_current, 1)
+            ),
             '�������', jsonb_build_object(
                 '����������', COALESCE(pr.hp_max, 1),
                 '���������', COALESCE(pr.hp_current, 1),
@@ -320,7 +332,10 @@ public sealed class CharacterRepository : ICharacterRepository
                 game_state_id,
                 level,
                 experience,
-                experience_to_next_level
+                experience_to_next_level,
+                level_up_available,
+                proficiency_bonus,
+                updated_at
             )
             VALUES
             (
@@ -328,21 +343,32 @@ public sealed class CharacterRepository : ICharacterRepository
                 @gameStateId,
                 @level,
                 @experience,
-                @experienceToNextLevel
+                @experienceToNextLevel,
+                @levelUpAvailable,
+                @proficiencyBonus,
+                now()
             )
             ON CONFLICT (player_id)
             DO UPDATE SET
                 level = EXCLUDED.level,
                 experience = EXCLUDED.experience,
-                experience_to_next_level = EXCLUDED.experience_to_next_level;
+                experience_to_next_level = EXCLUDED.experience_to_next_level,
+                level_up_available = EXCLUDED.level_up_available,
+                proficiency_bonus = EXCLUDED.proficiency_bonus,
+                updated_at = now();
         """;
 
+        var level = Math.Max(1, progression.Level);
+        var experience = Math.Max(0, progression.Experience);
+        var nextThreshold = ProgressionRules.GetNextLevelThreshold(level);
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("level", Math.Max(1, progression.Level));
-        command.Parameters.AddWithValue("experience", Math.Max(0, progression.Experience));
-        command.Parameters.AddWithValue("experienceToNextLevel", Math.Max(0, progression.ExperienceToNextLevel));
+        command.Parameters.AddWithValue("level", level);
+        command.Parameters.AddWithValue("experience", experience);
+        command.Parameters.AddWithValue("experienceToNextLevel", nextThreshold ?? Math.Max(0, progression.ExperienceToNextLevel));
+        command.Parameters.AddWithValue("levelUpAvailable", nextThreshold.HasValue && experience >= nextThreshold.Value);
+        command.Parameters.AddWithValue("proficiencyBonus", ProgressionRules.GetProficiencyBonus(level));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

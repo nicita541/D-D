@@ -1,5 +1,6 @@
 using System.Text.Json;
 using backend.Infrastructure.Database;
+using backend.Modules.Characters.Infrastructure;
 using backend.Modules.Combat.Contracts;
 using Npgsql;
 
@@ -278,18 +279,10 @@ public sealed class CombatOutcomeRepository : ICombatOutcomeRepository
 
     private static async Task AddExperienceAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, int amount, CancellationToken cancellationToken)
     {
-        const string sql = """
-            UPDATE game.player_progression
-            SET experience = experience + @amount
-            WHERE game_state_id = @gameStateId
-              AND player_id = @characterId;
-        """;
-
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("amount", Math.Max(0, amount));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (amount > 0)
+        {
+            await CharacterProgressionSql.AddExperienceAsync(connection, transaction, gameStateId, characterId, amount, cancellationToken);
+        }
     }
 
     private static async Task AddCurrencyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, Guid characterId, int amount, CancellationToken cancellationToken)

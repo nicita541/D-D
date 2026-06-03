@@ -10,6 +10,7 @@ using backend.Modules.Ai.Application;
 using backend.Modules.Campaigns.Application;
 using backend.Modules.Changes.Application;
 using backend.Modules.Characters.Application;
+using backend.Modules.Characters.Infrastructure;
 using backend.Modules.Combat.Application;
 using backend.Modules.GameStates.Application;
 using backend.Modules.Mechanics.Application;
@@ -233,6 +234,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
             "spawn_monster" => await CreateMonsterAsync(connection, transaction, gameStateId, payload, spawn: true, cancellationToken),
             "kill_monster" => await KillMonsterAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "add_xp" => await AddXpAsync(connection, transaction, gameStateId, payload, cancellationToken),
+            "level_up" => await LevelUpAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "add_currency" => await AddCurrencyAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "spend_currency" => await SpendCurrencyAsync(connection, transaction, gameStateId, payload, cancellationToken),
             "complete_quest" => await CompleteQuestAsync(connection, transaction, gameStateId, payload, cancellationToken),
@@ -1248,33 +1250,39 @@ public sealed class GameChangeRepository : IGameChangeRepository
         }
 
         await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
-        const string sql = """
-            UPDATE game.player_progression
-            SET experience = experience + @amount
-            WHERE game_state_id = @gameStateId
-              AND player_id = @characterId
-            RETURNING experience, level, experience_to_next_level;
-        """;
-
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("gameStateId", gameStateId);
-        command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("amount", amount);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        var state = await CharacterProgressionSql.AddExperienceAsync(connection, transaction, gameStateId, characterId, amount, cancellationToken);
+        if (state is null)
         {
             throw new RpgValidationException("Character progression was not found.");
         }
 
+        var result = CharacterProgressionSql.ToAddExperienceJson(state, amount, GetOptionalString(payload, "reason", "причина") ?? string.Empty);
         return JsonSerializer.SerializeToElement(new
         {
             operation = "add_xp",
             characterId,
             addedXp = amount,
-            totalXp = reader.GetInt32(0),
-            level = reader.GetInt32(1),
-            experienceToNextLevel = reader.GetInt32(2)
+            totalXp = state.Experience,
+            level = state.Level,
+            experienceToNextLevel = state.ExperienceToNextLevel,
+            levelUpAvailable = state.LevelUpAvailable,
+            progression = result
         });
+    }
+
+    private static async Task<JsonElement> LevelUpAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
+    {
+        var characterId = GetRequiredGuid(payload, "characterId", "character_id", "персонажId");
+        var requestedNewLevel = GetOptionalInt(payload, "newLevel", "новыйУровень");
+        var hpMaxAdd = GetOptionalInt(payload, "hpMaxAdd", "хпМаксимумДобавить");
+        await ValidateCharacterAsync(connection, transaction, gameStateId, characterId, cancellationToken);
+        var result = await CharacterProgressionSql.LevelUpAsync(connection, transaction, gameStateId, characterId, requestedNewLevel, hpMaxAdd, cancellationToken);
+        if (result is null)
+        {
+            throw new RpgValidationException("Character progression was not found.");
+        }
+
+        return CharacterProgressionSql.ToLevelUpJson(result);
     }
 
     private static async Task<JsonElement> AddCurrencyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid gameStateId, JsonElement payload, CancellationToken cancellationToken)
