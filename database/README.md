@@ -9,7 +9,7 @@ This project contains only the database layer. Backend API, JWT, C# models, cont
 From project root `E:\D&D`:
 
 ```powershell
-docker compose up --build postgres
+docker compose up -d --build postgres migrations
 ```
 
 Connection settings:
@@ -26,15 +26,14 @@ Connection string:
 Host=localhost;Port=5432;Database=dnd;Username=dnd_user;Password=dnd_password
 ```
 
-## Reset Database
+## Migrations
 
-PostgreSQL runs files from `init/` only when the data volume is empty. The schema intentionally recreates `auth` and `game`, so reset the volume after schema changes:
+PostgreSQL runs `init/` automatically only when `postgres_data` is empty. On every Compose startup, the `migrations` service applies missing scripts and records them in `infra.schema_migrations`.
 
-```powershell
-cd E:\D&D
-docker compose down -v --remove-orphans
-docker compose up --build postgres
-```
+- `001_create_schema.sql` is the base schema for a new volume and is never replayed on existing saves.
+- Later scripts must be idempotent and preserve existing user data.
+- `013_repair_bootstrap_text.sql` repairs only exact known corrupted bootstrap values.
+- Do not use `docker compose down -v` during normal upgrades because it deletes saved campaigns.
 
 ## Schemas
 
@@ -210,19 +209,12 @@ Some cross-table rules are intentionally left to backend validation because enfo
 - `game.combat_participants.actor_type = 'monster'` must use an `actor_id` from `game.monsters`.
 - Apply/reject endpoints must check `game_state` ownership through `game.game_states.account_id`.
 
-## Future Migration Plan
+## Migration Rules
 
-The current project uses dev init scripts under `database/init`. A later production migration structure can be introduced without changing the current Docker flow:
-
-- `database/migrations`
-- `schema_migrations`
-- `001_initial.sql`
-- `002_auth.sql`
-- `003_rpg_core.sql`
-- `004_story_party_combat.sql`
-- `005_character_domain.sql`
-- `006_ai_turns_changes.sql`
-- `007_world_domain.sql`
+- Add new schema changes as the next numbered file in `database/init`.
+- Never modify arbitrary user or AI text in repair migrations.
+- Make repair predicates exact and safe to run more than once.
+- Verify a new migration both on an empty database and on an existing `postgres_data` volume.
 
 ## Why Items Use owner_kind/owner_id
 

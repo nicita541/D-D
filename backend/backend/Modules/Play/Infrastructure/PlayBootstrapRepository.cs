@@ -151,8 +151,8 @@ public sealed class PlayBootstrapRepository : IPlayBootstrapRepository
 
         await using var insert = new NpgsqlCommand(insertSql, connection, transaction);
         insert.Parameters.AddWithValue("gameStateId", gameStateId);
-        insert.Parameters.AddWithValue("name", "������ ������");
-        insert.Parameters.AddWithValue("description", "������� ������ � ������ ����. ����� ����� ������������ ��������� � ����� ������ �����.");
+        insert.Parameters.AddWithValue("name", "Старая дорога");
+        insert.Parameters.AddWithValue("description", "Пыльная дорога у кромки леса. Рядом стоит покосившийся указатель и видны свежие следы.");
         return (Guid)(await insert.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Bootstrap location id was not returned."));
     }
@@ -180,7 +180,7 @@ public sealed class PlayBootstrapRepository : IPlayBootstrapRepository
         await using var insert = new NpgsqlCommand(insertSql, connection, transaction);
         insert.Parameters.AddWithValue("gameStateId", gameStateId);
         insert.Parameters.AddWithValue("title", "Первый след");
-        insert.Parameters.AddWithValue("description", "�����������, ��� ��������� � ������ ������, � ����� �������� ��������� ������.");
+        insert.Parameters.AddWithValue("description", "Разобраться, что случилось у старой дороги, и найти источник тревожных следов.");
         return (Guid)(await insert.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Bootstrap quest id was not returned."));
     }

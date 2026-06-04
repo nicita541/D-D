@@ -33,15 +33,15 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 SELECT jsonb_build_object(
                     'id', s.id,
                     'campaignTemplateId', s.campaign_template_id,
-                    '����������������', c.title,
-                    '���', c.tone,
-                    '������������', s.current_act,
-                    '������������', s.current_scene,
-                    '�����������', s.current_goal,
-                    '����������', s.tension_level,
-                    '�������������', s.plot_flags,
-                    '�������������', s.known_facts,
-                    '�������������', s.short_memory
+                    'названиеКампании', c.title,
+                    'тон', c.tone,
+                    'текущаяглава', s.current_act,
+                    'текущаясцена', s.current_scene,
+                    'текущаяцель', s.current_goal,
+                    'напряжение', s.tension_level,
+                    'сюжетныефлаги', s.plot_flags,
+                    'открытыеФакты', s.known_facts,
+                    'краткаяПамять', s.short_memory
                 ) AS data
                 FROM game.story_states s
                 LEFT JOIN game.campaign_templates c ON c.id = s.campaign_template_id
@@ -51,16 +51,16 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
             party_doc AS (
                 SELECT jsonb_build_object(
                     'id', p.id,
-                    '��������', p.name,
-                    '���������', COALESCE(
+                    'название', p.name,
+                    'участники', COALESCE(
                         (
                             SELECT jsonb_agg(jsonb_build_object(
                                 'id', m.id,
                                 'accountId', m.account_id,
                                 'characterId', m.character_id,
-                                '����', m.role,
-                                '������', m.status,
-                                '���������������', m.display_name
+                                'роль', m.role,
+                                'статус', m.status,
+                                'отображаемоеИмя', m.display_name
                             ) ORDER BY m.created_at)
                             FROM game.party_members m
                             WHERE m.party_id = p.id
@@ -75,20 +75,20 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
             combat_doc AS (
                 SELECT jsonb_build_object(
                     'id', c.id,
-                    '�������', c.is_active,
-                    '�����', c.round_number,
-                    '���������', COALESCE(
+                    'активен', c.is_active,
+                    'раунд', c.round_number,
+                    'участники', COALESCE(
                         (
                             SELECT jsonb_agg(jsonb_build_object(
                                 'id', p.id,
-                                '���������', p.actor_type,
+                                'типАктера', p.actor_type,
                                 'actorId', p.actor_id,
-                                '���', p.name,
-                                '����������', p.initiative,
-                                '���������', p.hp_current,
-                                '����������', p.hp_max,
-                                '�������������', p.has_acted,
-                                '���������', p.conditions
+                                'имя', p.name,
+                                'инициатива', p.initiative,
+                                'хпТекущее', p.hp_current,
+                                'хпМаксимум', p.hp_max,
+                                'ужеДействовал', p.has_acted,
+                                'состояния', p.conditions
                             ) ORDER BY p.initiative DESC, p.created_at)
                             FROM game.combat_participants p
                             WHERE p.combat_state_id = c.id
@@ -105,10 +105,10 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
                 FROM (
                     SELECT turn_number,
                            jsonb_build_object(
-                               '���������', turn_number,
-                               '���', type,
-                               '�����', text,
-                               '������', important,
+                               'номерхода', turn_number,
+                               'тип', type,
+                               'текст', text,
+                               'важное', important,
                                'createdAt', created_at
                            ) AS item
                     FROM game.game_log_entries
@@ -197,14 +197,14 @@ public sealed class AiMasterContextRepository : IAiMasterContextRepository
             ),
             memory_doc AS (
                 SELECT jsonb_build_object(
-                    '������', cm.summary,
-                    '������������', cm.current_scene,
-                    '�����������', cm.important_facts,
-                    '�������������', cm.open_threads,
-                    '�������������', cm.resolved_threads,
-                    '���������Npc', cm.known_npcs,
-                    '����������������', cm.known_locations,
-                    '��������������', cm.master_secrets,
+                    'резюме', cm.summary,
+                    'текущаяСцена', cm.current_scene,
+                    'важныеФакты', cm.important_facts,
+                    'открытыеЛинии', cm.open_threads,
+                    'закрытыеЛинии', cm.resolved_threads,
+                    'известныеNpc', cm.known_npcs,
+                    'известныеЛокации', cm.known_locations,
+                    'секретыМастера', cm.master_secrets,
                     'updatedAt', cm.updated_at
                 ) AS data
                 FROM game.campaign_memories cm

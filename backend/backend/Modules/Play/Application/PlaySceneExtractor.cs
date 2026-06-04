@@ -14,7 +14,7 @@ public static class PlaySceneExtractor
             return null;
         }
 
-        var scene = GetOptionalObject(memory.Value, "scene", "сцена", "currentScene", "������������");
+        var scene = GetOptionalObject(memory.Value, "scene", "сцена", "currentScene", "текущаяСцена");
         if (!scene.HasValue)
         {
             return null;

@@ -105,7 +105,7 @@ public sealed class CampaignMemoryService : ICampaignMemoryService
 
     private static void Validate(CampaignMemoryRequest request)
     {
-        ValidateObject(request.ResolvedCurrentScene, "������������");
+        ValidateObject(request.ResolvedCurrentScene, "текущаяСцена");
         ValidateArray(request.ResolvedImportantFacts, "важныеФакты");
         ValidateArray(request.ResolvedOpenThreads, "открытыеЛинии");
         ValidateArray(request.ResolvedResolvedThreads, "закрытыеЛинии");
@@ -125,11 +125,11 @@ public sealed class CampaignMemoryService : ICampaignMemoryService
         }));
 
         return $$"""
-            �� ������������� RPG-������ � �������� ������ ������ ��������.
-            �� ������ ��������� ������� ������� ����� ������ �������� JSON object ��� markdown � ��� ```json.
-            �� ��������� ������� ������� � player-facing summary. ���� masterSecretsAdd ��������� ������ ��� GM-only ��������.
+            Ты русскоязычный RPG-мастер и редактор долгой памяти кампании.
+            На основе последних записей журнала верни только валидный JSON object без markdown и без ```json.
+            Не раскрывай секреты мастера в player-facing summary. Поле masterSecretsAdd используй только для GM-only секретов.
 
-            ����� ������:
+            Схема ответа:
             {
               "summaryAppend": "краткое резюме новых важных событий на русском",
               "currentScene": {},
@@ -163,7 +163,7 @@ public sealed class CampaignMemoryService : ICampaignMemoryService
         => JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["резюме"] = string.Empty,
-            ["������������"] = new { },
+            ["текущаяСцена"] = new { },
             ["важныеФакты"] = Array.Empty<object>(),
             ["открытыеЛинии"] = Array.Empty<object>(),
             ["закрытыеЛинии"] = Array.Empty<object>(),

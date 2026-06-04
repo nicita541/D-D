@@ -1,9 +1,16 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage, RegisterPage } from './auth/AuthPages';
 import { ProtectedRoute } from './auth/ProtectedRoute';
+import { AdminRoute } from './auth/AdminRoute';
 import { GamesPage } from './game-states/GamesPage';
-import { SetupPage } from './characters/SetupPage';
+import { SetupRedirect } from './characters/SetupRedirect';
 import { PlayPage } from './play/PlayPage';
+import { CharactersManagePage } from './manage/CharactersManagePage';
+import { WorldManagePage } from './manage/WorldManagePage';
+import { StoryManagePage } from './manage/StoryManagePage';
+import { EncountersManagePage } from './manage/EncountersManagePage';
+import { HistoryManagePage } from './manage/HistoryManagePage';
+import { CampaignsAdminPage } from './admin/CampaignsAdminPage';
 
 export default function App() {
   return (
@@ -14,8 +21,16 @@ export default function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/games" element={<GamesPage />} />
-        <Route path="/games/:gameStateId/setup" element={<SetupPage />} />
+        <Route path="/games/:gameStateId/setup" element={<SetupRedirect />} />
         <Route path="/games/:gameStateId/play" element={<PlayPage />} />
+        <Route path="/games/:gameStateId/manage/characters" element={<CharactersManagePage />} />
+        <Route path="/games/:gameStateId/manage/world" element={<WorldManagePage />} />
+        <Route path="/games/:gameStateId/manage/story" element={<StoryManagePage />} />
+        <Route path="/games/:gameStateId/manage/encounters" element={<EncountersManagePage />} />
+        <Route path="/games/:gameStateId/manage/history" element={<HistoryManagePage />} />
+        <Route element={<AdminRoute />}>
+          <Route path="/admin/campaigns" element={<CampaignsAdminPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/games" replace />} />

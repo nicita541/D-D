@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { clearAuthSession, readAuthSession, type AuthSession } from '../shared/api/auth-storage';
 import { authApi } from '../shared/api/endpoints';
 import { AuthContext, type AuthContextValue } from './auth-context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<AuthSession | null>(() => readAuthSession());
+  const accountId = useRef(session?.account.id);
 
-  const reload = () => setSession(readAuthSession());
+  const reload = useCallback(() => {
+    const next = readAuthSession();
+    if (accountId.current !== next?.account.id) {
+      queryClient.clear();
+      accountId.current = next?.account.id;
+    }
+    setSession(next);
+  }, [queryClient]);
 
   useEffect(() => {
     const handler = () => reload();
@@ -16,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('dnd-auth-changed', handler);
       window.removeEventListener('storage', handler);
     };
-  }, []);
+  }, [reload]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -36,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearAuthSession();
       },
     }),
-    [session],
+    [reload, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

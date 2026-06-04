@@ -22,16 +22,16 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'id', id,
-                '��������', name,
-                '���', type,
-                '��������', description,
-                '��������', source,
-                '�������������', remaining_turns,
-                '����������', is_permanent,
-                '�����', stacks,
-                '��������������', max_stacks,
-                '�������', effects,
-                '����', tags
+                'название', name,
+                'тип', type,
+                'описание', description,
+                'источник', source,
+                'осталосьХодов', remaining_turns,
+                'постоянное', is_permanent,
+                'стаки', stacks,
+                'максимумСтаков', max_stacks,
+                'эффекты', effects,
+                'теги', tags
             )::text
             FROM game.conditions
             WHERE game_state_id = @gameStateId
@@ -531,7 +531,7 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
 
             if (currentItemId.HasValue)
             {
-                throw new RpgConflictException($"���� {normalizedSlot} ��� ����� ������ ���������.");
+                throw new RpgConflictException($"Слот {normalizedSlot} уже занят другим предметом.");
             }
 
             var sql = $"UPDATE game.equipped_gear SET {slotColumn} = @itemId WHERE game_state_id = @gameStateId AND player_id = @characterId;";
@@ -646,16 +646,16 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
 
         const string sql = """
             SELECT jsonb_build_object(
-                '������', head_item_id,
-                '����', body_item_id,
-                '����', hands_item_id,
-                '����', legs_item_id,
-                '�����', feet_item_id,
-                '������������', main_hand_item_id,
-                '����������', off_hand_item_id,
-                '������', amulet_item_id,
-                '������1', ring1_item_id,
-                '������2', ring2_item_id
+                'голова', head_item_id,
+                'тело', body_item_id,
+                'руки', hands_item_id,
+                'ноги', legs_item_id,
+                'обувь', feet_item_id,
+                'основнаяРука', main_hand_item_id,
+                'втораяРука', off_hand_item_id,
+                'амулет', amulet_item_id,
+                'кольцо1', ring1_item_id,
+                'кольцо2', ring2_item_id
             )::text
             FROM game.equipped_gear
             WHERE game_state_id = @gameStateId
@@ -1309,7 +1309,7 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
         command.Parameters.AddWithValue("characterId", characterId);
         if (await command.ExecuteScalarAsync(cancellationToken) is not true)
         {
-            throw new RpgValidationException("������ ����������� �� ����������� ����� ���������.");
+            throw new RpgValidationException("Ресурс способности не принадлежит этому персонажу.");
         }
     }
 

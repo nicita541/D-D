@@ -88,7 +88,7 @@ public sealed class CharacterProgressionRequest
     [JsonPropertyName("опыт")]
     public int Experience { get; set; }
 
-    [JsonPropertyName("����������������������")]
+    [JsonPropertyName("опытДоСледующегоУровня")]
     public int ExperienceToNextLevel { get; set; } = 300;
 }
 

@@ -2,6 +2,7 @@ import { clearAuthSession, readAuthSession, saveAuthSession } from './auth-stora
 import { ApiError, type ApiErrorPayload, type AuthResponse } from './types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
+let refreshPromise: Promise<boolean> | null = null;
 
 type RequestBody = BodyInit | Record<string, unknown> | unknown[] | null | undefined;
 
@@ -70,6 +71,19 @@ function buildRequest(options: ApiRequestOptions): RequestInit {
 }
 
 async function refreshTokens() {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = performTokenRefresh();
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function performTokenRefresh() {
   const session = readAuthSession();
   if (!session?.refreshToken) {
     clearAuthSession();

@@ -26,7 +26,7 @@ public sealed class ConditionRequest
     [JsonPropertyName("стаки")]
     public int Stacks { get; set; } = 1;
 
-    [JsonPropertyName("��������������")]
+    [JsonPropertyName("максимумСтаков")]
     public int? MaxStacks { get; set; }
 
     [JsonPropertyName("эффекты")]
@@ -255,10 +255,10 @@ public sealed class EquipmentRequest
     [JsonPropertyName("обувь")]
     public Guid? FeetItemId { get; set; }
 
-    [JsonPropertyName("������������")]
+    [JsonPropertyName("основнаяРука")]
     public Guid? MainHandItemId { get; set; }
 
-    [JsonPropertyName("����������")]
+    [JsonPropertyName("втораяРука")]
     public Guid? OffHandItemId { get; set; }
 
     [JsonPropertyName("амулет")]

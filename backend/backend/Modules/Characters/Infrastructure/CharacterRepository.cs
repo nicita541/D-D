@@ -241,17 +241,17 @@ public sealed class CharacterRepository : ICharacterRepository
         jsonb_build_object(
             'id', p.id,
             'gameStateId', p.game_state_id,
-            '���', p.name,
-            '�����������', p.background,
-            '���', p.species,
-            '�����', p.class_name,
-            '��������', p.subclass,
-            '��������', p.description,
-            '�������������', p.alignment,
-            '��������', jsonb_build_object(
-                '�������', COALESCE(pp.level, 1),
-                '����', COALESCE(pp.experience, 0),
-                '����������������������', COALESCE(pp.experience_to_next_level, 300)
+            'имя', p.name,
+            'предыстория', p.background,
+            'вид', p.species,
+            'класс', p.class_name,
+            'подкласс', p.subclass,
+            'описание', p.description,
+            'мировоззрение', p.alignment,
+            'прогресс', jsonb_build_object(
+                'уровень', COALESCE(pp.level, 1),
+                'опыт', COALESCE(pp.experience, 0),
+                'опытДоСледующегоУровня', COALESCE(pp.experience_to_next_level, 300)
             ),
             'progression', jsonb_build_object(
                 'level', COALESCE(pp.level, 1),
@@ -264,36 +264,36 @@ public sealed class CharacterRepository : ICharacterRepository
                 'hpMax', COALESCE(pr.hp_max, 1),
                 'hpCurrent', COALESCE(pr.hp_current, 1)
             ),
-            '�������', jsonb_build_object(
-                '����������', COALESCE(pr.hp_max, 1),
-                '���������', COALESCE(pr.hp_current, 1),
-                '������������', COALESCE(pr.mana_max, 0),
-                '�����������', COALESCE(pr.mana_current, 0),
-                '��������������������', COALESCE(pr.action_points_max, 1),
-                '�������������������', COALESCE(pr.action_points_current, 1)
+            'ресурсы', jsonb_build_object(
+                'хпМаксимум', COALESCE(pr.hp_max, 1),
+                'хпТекущее', COALESCE(pr.hp_current, 1),
+                'манаМаксимум', COALESCE(pr.mana_max, 0),
+                'манаТекущая', COALESCE(pr.mana_current, 0),
+                'очкиДействийМаксимум', COALESCE(pr.action_points_max, 1),
+                'очкиДействийТекущие', COALESCE(pr.action_points_current, 1)
             ),
-            '��������������', jsonb_build_object(
-                '����', COALESCE(pa.strength, 10),
-                '��������', COALESCE(pa.dexterity, 10),
-                '������������', COALESCE(pa.constitution, 10),
-                '���������', COALESCE(pa.intelligence, 10),
-                '��������', COALESCE(pa.wisdom, 10),
-                '�������', COALESCE(pa.charisma, 10),
-                '����������', COALESCE(pa.initiative, 0),
-                '��������', COALESCE(pa.speed, 9),
-                '����������', COALESCE(pa.perception, 10)
+            'характеристики', jsonb_build_object(
+                'сила', COALESCE(pa.strength, 10),
+                'ловкость', COALESCE(pa.dexterity, 10),
+                'телосложение', COALESCE(pa.constitution, 10),
+                'интеллект', COALESCE(pa.intelligence, 10),
+                'мудрость', COALESCE(pa.wisdom, 10),
+                'харизма', COALESCE(pa.charisma, 10),
+                'инициатива', COALESCE(pa.initiative, 0),
+                'скорость', COALESCE(pa.speed, 9),
+                'восприятие', COALESCE(pa.perception, 10)
             ),
-            '���������', jsonb_build_object(
-                '������', COALESCE(w.copper, 0),
-                '����������', COALESCE(w.silver, 0),
-                '�������', COALESCE(w.gold, 0),
-                '����������', COALESCE(w.platinum, 0)
+            'богатство', jsonb_build_object(
+                'медные', COALESCE(w.copper, 0),
+                'серебряные', COALESCE(w.silver, 0),
+                'золотые', COALESCE(w.gold, 0),
+                'платиновые', COALESCE(w.platinum, 0)
             ),
-            '���', jsonb_build_object(
-                '������������', COALESCE(cs.armor_class, 10),
-                '���������������', COALESCE(cs.proficiency_bonus, 2),
-                '����', COALESCE(cs.in_combat, false),
-                '����������������', COALESCE(cs.initiative_roll, 0)
+            'бой', jsonb_build_object(
+                'классДоспеха', COALESCE(cs.armor_class, 10),
+                'бонусМастерства', COALESCE(cs.proficiency_bonus, 2),
+                'вБою', COALESCE(cs.in_combat, false),
+                'бросокИнициативы', COALESCE(cs.initiative_roll, 0)
             )
         )::text
         """;

@@ -429,7 +429,7 @@ public sealed class GameChangeRepository : IGameChangeRepository
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var scene = GetOptionalElement(payload, "scene", "сцена", "currentScene", "������������") ?? payload;
+        var scene = GetOptionalElement(payload, "scene", "сцена", "currentScene", "текущаяСцена") ?? payload;
         if (scene.ValueKind != JsonValueKind.Object)
         {
             throw new RpgValidationException("scene должен быть JSON object.");
@@ -2080,14 +2080,14 @@ public sealed class GameChangeRepository : IGameChangeRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'gameStateId', cm.game_state_id,
-                '������', cm.summary,
-                '������������', cm.current_scene,
-                '�����������', cm.important_facts,
-                '�������������', cm.open_threads,
-                '�������������', cm.resolved_threads,
-                '���������Npc', cm.known_npcs,
-                '����������������', cm.known_locations,
-                '��������������', cm.master_secrets,
+                'резюме', cm.summary,
+                'текущаяСцена', cm.current_scene,
+                'важныеФакты', cm.important_facts,
+                'открытыеЛинии', cm.open_threads,
+                'закрытыеЛинии', cm.resolved_threads,
+                'известныеNpc', cm.known_npcs,
+                'известныеЛокации', cm.known_locations,
+                'секретыМастера', cm.master_secrets,
                 'updatedAt', cm.updated_at
             )::text
             FROM game.campaign_memories cm

@@ -42,7 +42,7 @@ public sealed class StoryController : ControllerBase
     {
         var current = _currentUser.GetRequiredUser();
         var story = await _story.GetStoryStateAsync(current.AccountId, gameStateId, cancellationToken);
-        return story.HasValue ? Ok(story.Value) : NotFound(new MessageResponse { Message = "�������� ��������� �� �������" });
+        return story.HasValue ? Ok(story.Value) : NotFound(new MessageResponse { Message = "Сюжетное состояние не найдено" });
     }
 
     [HttpPut]
@@ -53,7 +53,7 @@ public sealed class StoryController : ControllerBase
         var current = _currentUser.GetRequiredUser();
         var id = await _story.UpsertStoryStateAsync(current.AccountId, gameStateId, request ?? new CreateOrUpdateStoryStateRequest(), cancellationToken);
         return id.HasValue
-            ? Ok(new OperationResponse { Id = id.Value, Message = "�������� ��������� ���������" })
+            ? Ok(new OperationResponse { Id = id.Value, Message = "Сюжетное состояние сохранено" })
             : NotFound(new MessageResponse { Message = "GameState не найден" });
     }
 }

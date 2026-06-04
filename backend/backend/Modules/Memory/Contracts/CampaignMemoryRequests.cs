@@ -11,7 +11,7 @@ public sealed class CampaignMemoryRequest
     [JsonPropertyName("summary")]
     public string? Summary { get; set; }
 
-    [JsonPropertyName("������������")]
+    [JsonPropertyName("текущаяСцена")]
     public JsonElement? CurrentSceneRu { get; set; }
 
     [JsonPropertyName("currentScene")]

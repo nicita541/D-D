@@ -1,0 +1,17 @@
+export const queryKeys = {
+  games: ['games'] as const,
+  campaigns: ['campaigns'] as const,
+  game: (gameStateId: string) => ['games', gameStateId] as const,
+  play: (gameStateId: string) => ['games', gameStateId, 'play'] as const,
+  characters: (gameStateId: string) => ['games', gameStateId, 'characters'] as const,
+  character: (gameStateId: string, characterId: string) => ['games', gameStateId, 'characters', characterId] as const,
+  characterDomain: (gameStateId: string, characterId: string, domain: string) =>
+    ['games', gameStateId, 'characters', characterId, domain] as const,
+  world: (gameStateId: string, resource: string, parentId = '') => ['games', gameStateId, 'world', resource, parentId] as const,
+  story: (gameStateId: string) => ['games', gameStateId, 'story'] as const,
+  memory: (gameStateId: string) => ['games', gameStateId, 'memory'] as const,
+  party: (gameStateId: string) => ['games', gameStateId, 'party'] as const,
+  combat: (gameStateId: string) => ['games', gameStateId, 'combat'] as const,
+  loot: (gameStateId: string) => ['games', gameStateId, 'loot'] as const,
+  history: (gameStateId: string, resource: string) => ['games', gameStateId, 'history', resource] as const,
+};

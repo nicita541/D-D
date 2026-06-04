@@ -92,7 +92,7 @@ public sealed class PlayOrchestratorService : IPlayOrchestratorService
         var message = BuildActMessage(request);
         if (string.IsNullOrWhiteSpace(message))
         {
-            return RpgResult<PlayStateResponse>.BadRequest("��������� ������ �����������.");
+            return RpgResult<PlayStateResponse>.BadRequest("Сообщение игрока обязательно.");
         }
 
         var turn = await _turns.CreateTurnAsync(accountId, gameStateId, new CreateTurnRequest { Message = message }, cancellationToken);
@@ -257,7 +257,7 @@ public sealed class PlayOrchestratorService : IPlayOrchestratorService
 
         if (resolved.HasValue)
         {
-            message = $"{message}{Environment.NewLine}{Environment.NewLine}��������� ��������� ������� �������� ��� ������� backend. �������� ����� � ������ ����� ����������.";
+            message = $"{message}{Environment.NewLine}{Environment.NewLine}Результат закрытого запроса механики уже сохранён backend. Продолжи сцену с учетом этого результата.";
         }
 
         return message;

@@ -435,7 +435,7 @@ public sealed class WorldRepository : IWorldRepository
         command.Parameters.AddWithValue("status", DbString(GetOptionalString(payload, "status", "статус")));
         command.Parameters.AddWithValue("rewardExperience", DbInt(GetOptionalInt(payload, "rewardExperience", "reward_experience", "наградаОпыт")));
         command.Parameters.AddWithValue("rewardCopper", DbInt(GetOptionalInt(payload, "rewardCopper", "reward_copper", "наградаМедные")));
-        command.Parameters.AddWithValue("rewardSilver", DbInt(GetOptionalInt(payload, "rewardSilver", "reward_silver", "�����������������")));
+        command.Parameters.AddWithValue("rewardSilver", DbInt(GetOptionalInt(payload, "rewardSilver", "reward_silver", "наградаСеребряные")));
         command.Parameters.AddWithValue("rewardGold", DbInt(GetOptionalInt(payload, "rewardGold", "reward_gold", "наградаЗолотые")));
         command.Parameters.AddWithValue("rewardPlatinum", DbInt(GetOptionalInt(payload, "rewardPlatinum", "reward_platinum", "наградаПлатиновые")));
         command.Parameters.AddWithValue("isCompleted", DbBool(GetOptionalBool(payload, "isCompleted", "is_completed", "завершён")));

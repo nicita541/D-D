@@ -48,6 +48,23 @@ export interface GameStateSummary {
   currentLocationId?: string | null;
 }
 
+export interface OperationResponse {
+  id: string;
+  message: string;
+}
+
+export interface CampaignTemplate extends JsonObject {
+  id: string;
+  название: string;
+  жанр: string | null;
+  тон: string | null;
+  краткоеописание: string | null;
+  вступление: string | null;
+  главнаяцель: string | null;
+  секретымастера: string[];
+  начальныефлаги: JsonObject;
+}
+
 export interface PlayScene {
   title?: string | null;
   summary?: string | null;

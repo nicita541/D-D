@@ -11,6 +11,7 @@ import {
   RotateCw,
   ScrollText,
   Send,
+  Settings,
   Shield,
   Sparkles,
   Swords,
@@ -18,9 +19,11 @@ import {
 import { combatApi, inventoryApi, lootApi, playApi, travelApi, charactersApi, restApi, timeApi } from '../shared/api/endpoints';
 import type { JsonObject, PlayStateResponse } from '../shared/api/types';
 import { arrayOfObjects, boolOf, firstText, idOf, numberOf, objectOf, textOf } from '../shared/api/json';
-import { AppShell, Button, EmptyState, ErrorState, LoadingState, Panel } from '../shared/components/ui';
-import { getErrorMessage, isUnavailableActionError } from '../shared/api/errors';
+import { AppShell, Button, ConfirmButton, EmptyState, ErrorState, LoadingState, Panel } from '../shared/components/ui';
+import { getErrorMessage } from '../shared/api/errors';
 import { modeInfo, operationDanger, operationLabel } from './labels';
+import { queryKeys } from '../shared/api/query-keys';
+import { normalizeTravelOptions } from './travel';
 
 export function PlayPage() {
   const { gameStateId = '' } = useParams();
@@ -31,7 +34,7 @@ export function PlayPage() {
     gameStateId ? window.localStorage.getItem(`dnd.selectedCharacter.${gameStateId}`) ?? '' : '',
   );
   const status = useQuery({
-    queryKey: ['play-status', gameStateId],
+    queryKey: queryKeys.play(gameStateId),
     queryFn: () => playApi.status(gameStateId),
     refetchInterval: 15000,
     enabled: Boolean(gameStateId),
@@ -53,7 +56,7 @@ export function PlayPage() {
   }
 
   function refresh() {
-    void queryClient.invalidateQueries({ queryKey: ['play-status', gameStateId] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.play(gameStateId) });
   }
 
   if (status.isLoading) {
@@ -98,6 +101,9 @@ export function PlayPage() {
           <Button variant="secondary" onClick={refresh}>
             <RotateCw size={18} /> Обновить
           </Button>
+          <Button variant="secondary" onClick={() => navigate(`/games/${gameStateId}/manage/characters`)}>
+            <Settings size={18} /> Управление
+          </Button>
           <BackButton onClick={() => navigate('/games')} />
         </>
       }
@@ -111,7 +117,7 @@ export function PlayPage() {
             onChanged={refresh}
           />
           <InventoryPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
-          <ProgressionPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <ProgressionPanel state={state} />
           <RestTimePanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
         </aside>
 
@@ -269,6 +275,10 @@ function ActionPanel({
       onChanged();
     },
   });
+  const continueScene = useMutation({
+    mutationFn: () => playApi.continue(gameStateId),
+    onSuccess: onChanged,
+  });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -304,7 +314,10 @@ function ActionPanel({
           <Send size={18} /> {action.isPending ? 'Отправляем...' : 'Действовать'}
         </Button>
       </form>
-      {action.error ? <p className="form-error">{getErrorMessage(action.error)}</p> : null}
+      <Button variant="secondary" disabled={continueScene.isPending || state.mode === 'awaiting_roll'} onClick={() => continueScene.mutate()}>
+        Продолжить сцену
+      </Button>
+      {[action.error, continueScene.error].filter(Boolean).map((error, index) => <p className="form-error" key={index}>{getErrorMessage(error)}</p>)}
     </Panel>
   );
 }
@@ -369,17 +382,17 @@ function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; 
               </span>
             </div>
             <small>{payloadSummary(textOf(change.operation, ''), objectOf(change.payload))}</small>
-            <details>
-              <summary>JSON детали</summary>
-              <pre>{JSON.stringify(change.payload ?? {}, null, 2)}</pre>
-            </details>
             <div className="button-row">
-              <Button variant="secondary" onClick={() => apply.mutate(String(change.id))}>
-                Применить
-              </Button>
-              <Button variant="danger" onClick={() => reject.mutate(String(change.id))}>
+              {operationDanger(textOf(change.operation, '')) ? (
+                <ConfirmButton variant="danger" confirmText="Применить потенциально опасное изменение?" onConfirm={() => apply.mutate(String(change.id))}>
+                  Применить
+                </ConfirmButton>
+              ) : (
+                <Button variant="secondary" onClick={() => apply.mutate(String(change.id))}>Применить</Button>
+              )}
+              <ConfirmButton variant="danger" confirmText="Отклонить изменение?" onConfirm={() => reject.mutate(String(change.id))}>
                 Отклонить
-              </Button>
+              </ConfirmButton>
             </div>
           </div>
         ))}
@@ -406,12 +419,6 @@ function InventoryPanel({
 }) {
   const [name, setName] = useState('Дорожный паёк');
   const [itemType, setItemType] = useState('consumable');
-  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
-  const markIfUnavailable = (action: string, error: unknown) => {
-    if (isUnavailableActionError(error)) {
-      setDisabledActions((current) => new Set(current).add(action));
-    }
-  };
   const create = useMutation({
     mutationFn: () =>
       inventoryApi.create(gameStateId, characterId, {
@@ -424,7 +431,6 @@ function InventoryPanel({
         properties: itemType === 'consumable' ? { effect: 'heal', amount: 1 } : {},
       }),
     onSuccess: onChanged,
-    onError: (error) => markIfUnavailable('create', error),
   });
   const itemAction = useMutation({
     mutationFn: ({ action, itemId }: { action: 'equip' | 'unequip' | 'use' | 'delete'; itemId: string }) => {
@@ -434,7 +440,6 @@ function InventoryPanel({
       return inventoryApi.delete(gameStateId, characterId, itemId);
     },
     onSuccess: onChanged,
-    onError: (error, variables) => markIfUnavailable(variables.action, error),
   });
 
   return (
@@ -447,7 +452,7 @@ function InventoryPanel({
           <option value="armor">armor</option>
           <option value="misc">misc</option>
         </select>
-        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId || disabledActions.has('create')}>
+        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId}>
           Добавить
         </Button>
       </form>
@@ -462,25 +467,24 @@ function InventoryPanel({
                 {textOf(item.itemType ?? item.item_type ?? item.тип, 'item')} · x{numberOf(item.quantity ?? item.количество, 1)}
               </small>
               <div className="button-row">
-                <Button variant="secondary" disabled={disabledActions.has('equip')} onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
+                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
                   Надеть
                 </Button>
-                <Button variant="secondary" disabled={disabledActions.has('unequip')} onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
+                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
                   Снять
                 </Button>
-                <Button variant="secondary" disabled={disabledActions.has('use')} onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
+                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
                   Использовать
                 </Button>
-                <Button variant="danger" disabled={disabledActions.has('delete')} onClick={() => itemAction.mutate({ action: 'delete', itemId: id })}>
+                <ConfirmButton variant="danger" confirmText="Удалить предмет?" onConfirm={() => itemAction.mutate({ action: 'delete', itemId: id })}>
                   Удалить
-                </Button>
+                </ConfirmButton>
               </div>
             </div>
           );
         })}
       </div>
-      {disabledActions.size > 0 ? <p className="muted">Часть inventory-действий отключена: backend endpoint недоступен в текущей версии.</p> : null}
-      {[create.error, itemAction.error].filter((error) => error && !isUnavailableActionError(error)).map((error, index) => (
+      {[create.error, itemAction.error].filter(Boolean).map((error, index) => (
         <p className="form-error" key={index}>
           {getErrorMessage(error)}
         </p>
@@ -490,7 +494,8 @@ function InventoryPanel({
 }
 
 function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChanged: () => void }) {
-  const options = useQuery({ queryKey: ['travel-options', gameStateId], queryFn: () => travelApi.options(gameStateId) });
+  const options = useQuery({ queryKey: queryKeys.world(gameStateId, 'travel-options'), queryFn: () => travelApi.options(gameStateId) });
+  const travelOptions = normalizeTravelOptions(options.data);
   const travel = useMutation({
     mutationFn: ({ targetLocationId, exitId }: { targetLocationId: string; exitId?: string }) => travelApi.travel(gameStateId, targetLocationId, exitId),
     onSuccess: onChanged,
@@ -499,15 +504,16 @@ function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChange
   return (
     <Panel title="Путешествие" actions={<Footprints size={18} />}>
       {options.isLoading ? <LoadingState text="Ищем маршруты..." /> : null}
-      {options.data?.length === 0 ? <EmptyState title="Нет доступных переходов" /> : null}
+      {!options.isLoading && travelOptions.length === 0 ? <EmptyState title="Нет доступных переходов" /> : null}
       <div className="list-stack">
-        {options.data?.map((option, index) => {
-          const target = idOf(option.targetLocationId ?? option.locationId ?? option.id);
+        {travelOptions.map((option, index) => {
+          const targetLocation = objectOf(option.targetLocation);
+          const target = idOf(option.targetLocationId ?? targetLocation?.id ?? option.locationId ?? option.id);
           const exitId = idOf(option.exitId);
           return (
             <div className="mini-card" key={`${target ?? index}-${exitId ?? 'direct'}`}>
-              <strong>{firstText(option, ['targetLocationName', 'name', 'название'], 'Локация')}</strong>
-              <small>{firstText(option, ['direction', 'description', 'описание'], exitId ? 'Переход' : 'Прямой переход')}</small>
+              <strong>{firstText(targetLocation ?? option, ['targetLocationName', 'name', 'название'], 'Локация')}</strong>
+              <small>{firstText(option, ['direction', 'description', 'описание'], firstText(targetLocation, ['description', 'описание'], exitId ? 'Переход' : 'Прямой переход'))}</small>
               <Button variant="secondary" disabled={!target || travel.isPending} onClick={() => target && travel.mutate({ targetLocationId: target, exitId })}>
                 Перейти
               </Button>
@@ -515,22 +521,31 @@ function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChange
           );
         })}
       </div>
+      {options.error ? <p className="form-error">{getErrorMessage(options.error)}</p> : null}
       {travel.error ? <p className="form-error">{getErrorMessage(travel.error)}</p> : null}
     </Panel>
   );
 }
 
 function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; state: PlayStateResponse; onChanged: () => void }) {
-  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
-  const markIfUnavailable = (action: string, error: unknown) => {
-    if (isUnavailableActionError(error)) {
-      setDisabledActions((current) => new Set(current).add(action));
-    }
-  };
-  const start = useMutation({ mutationFn: () => combatApi.start(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('start', error) });
-  const end = useMutation({ mutationFn: () => combatApi.end(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('end', error) });
-  const resolve = useMutation({ mutationFn: () => combatApi.resolveOutcome(gameStateId), onSuccess: onChanged, onError: (error) => markIfUnavailable('resolve', error) });
+  const [attackerId, setAttackerId] = useState('');
+  const [targetId, setTargetId] = useState('');
+  const start = useMutation({ mutationFn: () => combatApi.start(gameStateId), onSuccess: onChanged });
+  const end = useMutation({ mutationFn: () => combatApi.end(gameStateId), onSuccess: onChanged });
+  const resolve = useMutation({ mutationFn: () => combatApi.resolveOutcome(gameStateId), onSuccess: onChanged });
+  const continueCombat = useMutation({ mutationFn: () => combatApi.continue(gameStateId), onSuccess: onChanged });
   const participants = arrayOfObjects(state.combat?.participants);
+  const attack = useMutation({
+    mutationFn: () => combatApi.action(gameStateId, {
+      attackerParticipantId: attackerId,
+      targetParticipantId: targetId,
+      attackRoll: '1d20',
+      damageRoll: '1d6',
+      damageType: 'physical',
+      reason: 'Атака с игрового экрана.',
+    }),
+    onSuccess: onChanged,
+  });
 
   return (
     <Panel title="Бой" actions={<Swords size={18} />}>
@@ -553,20 +568,36 @@ function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; s
           </div>
         </>
       ) : null}
+      {participants.length > 1 ? (
+        <div className="form-stack">
+          <select value={attackerId} onChange={(event) => setAttackerId(event.target.value)}>
+            <option value="">Атакующий</option>
+            {participants.map((participant) => <option key={String(participant.id)} value={String(participant.id)}>{firstText(participant, ['name', 'имя'], 'Участник')}</option>)}
+          </select>
+          <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+            <option value="">Цель</option>
+            {participants.map((participant) => <option key={String(participant.id)} value={String(participant.id)}>{firstText(participant, ['name', 'имя'], 'Участник')}</option>)}
+          </select>
+          <Button disabled={!attackerId || !targetId || attackerId === targetId || attack.isPending} onClick={() => attack.mutate()}>
+            Атаковать
+          </Button>
+        </div>
+      ) : null}
       <div className="button-row">
-        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending || disabledActions.has('start')}>
+        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending}>
           Начать
         </Button>
-        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending || disabledActions.has('resolve')}>
+        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending}>
           Исход
         </Button>
-        <Button variant="danger" onClick={() => end.mutate()} disabled={end.isPending || disabledActions.has('end')}>
-          Завершить
+        <Button variant="secondary" onClick={() => continueCombat.mutate()} disabled={continueCombat.isPending}>
+          Продолжить бой
         </Button>
+        <ConfirmButton variant="danger" confirmText="Завершить активный бой?" onConfirm={() => end.mutate()} disabled={end.isPending}>
+          Завершить
+        </ConfirmButton>
       </div>
-      <p className="muted">Атака появится после выбора attacker/target payload; frontend не генерирует combat rules сам.</p>
-      {disabledActions.size > 0 ? <p className="muted">Часть combat-действий отключена: backend endpoint недоступен в текущей версии.</p> : null}
-      {[start.error, end.error, resolve.error].filter((error) => error && !isUnavailableActionError(error)).map((error, index) => (
+      {[start.error, end.error, resolve.error, continueCombat.error, attack.error].filter(Boolean).map((error, index) => (
         <p className="form-error" key={index}>
           {getErrorMessage(error)}
         </p>
@@ -575,22 +606,7 @@ function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; s
   );
 }
 
-function ProgressionPanel({
-  gameStateId,
-  characterId,
-  state,
-  onChanged,
-}: {
-  gameStateId: string;
-  characterId: string;
-  state: PlayStateResponse;
-  onChanged: () => void;
-}) {
-  const [amount, setAmount] = useState(50);
-  const xp = useMutation({
-    mutationFn: () => charactersApi.addXp(gameStateId, characterId, amount, 'Начислено через frontend.'),
-    onSuccess: onChanged,
-  });
+function ProgressionPanel({ state }: { state: PlayStateResponse }) {
   const progression = objectOf(state.progression);
 
   return (
@@ -601,16 +617,7 @@ function ProgressionPanel({
         <Metric label="Next" value={numberOf(progression?.experienceToNextLevel, 300)} />
         <Metric label="Prof" value={numberOf(progression?.proficiencyBonus, 2)} />
       </div>
-      <details>
-        <summary>Dev / начислить XP вручную</summary>
-        <div className="inline-form details-actions">
-          <input type="number" value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
-          <Button variant="secondary" onClick={() => xp.mutate()} disabled={!characterId || xp.isPending}>
-            +XP
-          </Button>
-        </div>
-      </details>
-      {xp.error ? <p className="form-error">{getErrorMessage(xp.error)}</p> : null}
+      <p className="muted">Опыт и повышение уровня выдаются игровыми наградами. Ручное управление доступно владельцу кампании.</p>
     </Panel>
   );
 }
@@ -626,25 +633,15 @@ function RestTimePanel({
   state: PlayStateResponse;
   onChanged: () => void;
 }) {
-  const [disabledActions, setDisabledActions] = useState<Set<string>>(() => new Set());
   const time = objectOf(state.time);
   const selectedState = state.characterStates.find((item) => String(item.characterId ?? item.id) === characterId);
-  const markIfUnavailable = (action: string, error: unknown) => {
-    if (isUnavailableActionError(error)) {
-      setDisabledActions((current) => new Set(current).add(action));
-    }
-  };
   const action = useMutation({
-    mutationFn: async (kind: 'short-rest' | 'long-rest' | 'advance-time' | 'tick' | 'knockout' | 'revive') => {
+    mutationFn: async (kind: 'short-rest' | 'long-rest' | 'advance-time') => {
       if (kind === 'short-rest') return restApi.short(gameStateId, characterId);
       if (kind === 'long-rest') return restApi.long(gameStateId, characterId);
-      if (kind === 'advance-time') return timeApi.advance(gameStateId, 60, 'Игровое время продвинуто через frontend.');
-      if (kind === 'tick') return charactersApi.tickConditions(gameStateId, characterId, 1);
-      if (kind === 'knockout') return charactersApi.knockout(gameStateId, characterId);
-      return charactersApi.revive(gameStateId, characterId, 1);
+      return timeApi.advance(gameStateId, 60, 'Игровое время продвинуто через игровой экран.');
     },
     onSuccess: onChanged,
-    onError: (error, kind) => markIfUnavailable(kind, error),
   });
 
   return (
@@ -670,32 +667,17 @@ function RestTimePanel({
         </div>
       ) : null}
       <div className="button-row">
-        <Button variant="secondary" disabled={action.isPending || disabledActions.has('short-rest')} onClick={() => action.mutate('short-rest')}>
+        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('short-rest')}>
           Короткий отдых
         </Button>
-        <Button variant="secondary" disabled={action.isPending || disabledActions.has('long-rest')} onClick={() => action.mutate('long-rest')}>
+        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('long-rest')}>
           Долгий отдых
         </Button>
-        <Button variant="secondary" disabled={action.isPending || disabledActions.has('advance-time')} onClick={() => action.mutate('advance-time')}>
+        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('advance-time')}>
           +1 час
         </Button>
       </div>
-      <details>
-        <summary>Dev / отладка состояния</summary>
-        <div className="button-row details-actions">
-          <Button variant="secondary" disabled={action.isPending || disabledActions.has('tick')} onClick={() => action.mutate('tick')}>
-            Tick conditions
-          </Button>
-          <Button variant="danger" disabled={action.isPending || disabledActions.has('knockout')} onClick={() => action.mutate('knockout')}>
-            Knockout
-          </Button>
-          <Button variant="secondary" disabled={action.isPending || disabledActions.has('revive')} onClick={() => action.mutate('revive')}>
-            Revive
-          </Button>
-        </div>
-      </details>
-      {disabledActions.size > 0 ? <p className="muted">Некоторые действия отключены: backend endpoint недоступен в текущей версии.</p> : null}
-      {action.error && !isUnavailableActionError(action.error) ? <p className="form-error">{getErrorMessage(action.error)}</p> : null}
+      {action.error ? <p className="form-error">{getErrorMessage(action.error)}</p> : null}
     </Panel>
   );
 }

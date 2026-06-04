@@ -1,6 +1,25 @@
-POST http://localhost:5130/api/dm/message
+@host = http://localhost:8080
+@accessToken = paste-access-token
+@gameStateId = paste-game-state-id
+
+GET {{host}}/health/db
+
+###
+
+POST {{host}}/api/auth/login
 Content-Type: application/json
 
 {
-  "message": "Начать квест"
+  "login": "demo",
+  "password": "change-me"
 }
+
+###
+
+GET {{host}}/api/game-states
+Authorization: Bearer {{accessToken}}
+
+###
+
+GET {{host}}/api/game-states/{{gameStateId}}/play/status
+Authorization: Bearer {{accessToken}}

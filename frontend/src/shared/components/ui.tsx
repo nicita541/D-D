@@ -2,6 +2,9 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { getErrorMessage } from '../api/errors';
 
+type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant };
+
 export function AppShell({
   title,
   subtitle,
@@ -52,16 +55,34 @@ export function Panel({
   );
 }
 
-export function Button({
-  children,
-  variant = 'primary',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' }) {
+export function Button({ children, variant = 'primary', ...props }: ButtonProps) {
   return (
     <button className={`btn btn-${variant}`} type="button" {...props}>
       {children}
     </button>
   );
+}
+
+export function ConfirmButton({
+  confirmText,
+  onConfirm,
+  ...props
+}: ButtonProps & { confirmText: string; onConfirm: () => void }) {
+  return (
+    <Button
+      {...props}
+      onClick={(event) => {
+        props.onClick?.(event);
+        if (!event.defaultPrevented && window.confirm(confirmText)) {
+          onConfirm();
+        }
+      }}
+    />
+  );
+}
+
+export function Notice({ children, tone = 'success' }: { children: ReactNode; tone?: 'success' | 'warning' }) {
+  return <div className={tone === 'success' ? 'success-box' : 'warning-box'}>{children}</div>;
 }
 
 export function EmptyState({ title, text }: { title: string; text?: string }) {

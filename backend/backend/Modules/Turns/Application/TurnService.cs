@@ -56,12 +56,12 @@ public sealed class TurnService : ITurnService
         var playerMessage = request.ResolvedPlayerMessage;
         if (string.IsNullOrWhiteSpace(playerMessage))
         {
-            return RpgResult<JsonElement>.BadRequest("��������� ������ �����������.");
+            return RpgResult<JsonElement>.BadRequest("Сообщение игрока обязательно.");
         }
 
         if (playerMessage.Length > PlayerMessageMaxLength)
         {
-            return RpgResult<JsonElement>.BadRequest($"��������� ������ �� ������ ��������� {PlayerMessageMaxLength} ��������.");
+            return RpgResult<JsonElement>.BadRequest($"Сообщение игрока не должно превышать {PlayerMessageMaxLength} символов.");
         }
 
         var creation = await _turns.CreatePendingTurnAsync(accountId, gameStateId, playerMessage, cancellationToken);

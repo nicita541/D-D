@@ -71,7 +71,7 @@ public sealed class CampaignMemoryController : ControllerBase
             RpgResultStatus.Ok => Ok(result.Value),
             RpgResultStatus.BadRequest => BadRequest(new MessageResponse { Message = result.Message ?? "Некорректный запрос." }),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "Не найдено." }),
-            RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "������ �������� ����������." }),
+            RpgResultStatus.ServiceUnavailable => StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "Сервис временно недоступен." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 }
