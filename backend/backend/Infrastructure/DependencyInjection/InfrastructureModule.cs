@@ -1,7 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using backend.Infrastructure.Ai;
 using backend.Infrastructure.Auth;
 using backend.Infrastructure.Database;
+using backend.Modules.Realtime;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -13,9 +15,22 @@ public static class InfrastructureModule
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddControllers();
+        services.AddSignalR();
         services.AddHttpContextAccessor();
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<AiMasterOptions>(configuration.GetSection(AiMasterOptions.SectionName));
+        services.AddRateLimiter(options =>
+        {
+            options.AddPolicy("invites", context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0
+                    }));
+        });
 
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Jwt options are not configured.");
@@ -62,12 +77,29 @@ public static class InfrastructureModule
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.FromSeconds(30)
                 };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/games"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
         services.AddAuthorization();
         services.AddSingleton<IPostgresConnectionFactory, PostgresConnectionFactory>();
         services.AddSingleton<IPasswordHashService, PasswordHashService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IGameAccessService, GameAccessService>();
+        services.AddScoped<IGameRealtimeNotifier, GameRealtimeNotifier>();
         services.AddHttpClient<IOllamaClient, OllamaClient>();
 
         return services;

@@ -35,6 +35,18 @@ public sealed class PartyService : IPartyService
     public Task<Guid?> AddPartyMemberAsync(Guid accountId, Guid gameStateId, AddPartyMemberRequest request, CancellationToken cancellationToken)
         => _repository.AddPartyMemberAsync(accountId, gameStateId, request, cancellationToken);
 
+    public Task<bool> UpdatePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, UpdatePartyMemberRequest request, CancellationToken cancellationToken)
+        => _repository.UpdatePartyMemberAsync(accountId, gameStateId, memberId, request, cancellationToken);
+
+    public Task<bool> AssignPartyMemberCharacterAsync(Guid accountId, Guid gameStateId, Guid memberId, Guid? characterId, CancellationToken cancellationToken)
+        => _repository.AssignPartyMemberCharacterAsync(accountId, gameStateId, memberId, characterId, cancellationToken);
+
+    public Task<bool> AssignCharacterToAccountAsync(Guid ownerAccountId, Guid gameStateId, Guid memberAccountId, Guid characterId, CancellationToken cancellationToken)
+        => _repository.AssignCharacterToAccountAsync(ownerAccountId, gameStateId, memberAccountId, characterId, cancellationToken);
+
     public Task<bool> RemovePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, CancellationToken cancellationToken)
         => _repository.RemovePartyMemberAsync(accountId, gameStateId, memberId, cancellationToken);
+
+    public Task<bool> LeavePartyAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+        => _repository.LeavePartyAsync(accountId, gameStateId, cancellationToken);
 }

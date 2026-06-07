@@ -165,6 +165,108 @@ public sealed class PartyRepository : IPartyRepository
         }
     }
 
+    public async Task<bool> UpdatePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, UpdatePartyMemberRequest request, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        const string sql = """
+            UPDATE game.party_members m
+            SET account_id = COALESCE(@memberAccountId, m.account_id),
+                character_id = COALESCE(@characterId, m.character_id),
+                role = COALESCE(@role, m.role),
+                status = COALESCE(@status, m.status),
+                display_name = COALESCE(@displayName, m.display_name),
+                updated_at = now()
+            FROM game.game_states gs
+            WHERE gs.id = m.game_state_id
+              AND gs.account_id = @accountId
+              AND m.game_state_id = @gameStateId
+              AND m.id = @memberId
+              AND (
+                    @characterId IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM game.players p
+                        WHERE p.id = @characterId
+                          AND p.game_state_id = @gameStateId
+                    )
+              );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("memberId", memberId);
+        command.Parameters.AddNullableUuid("memberAccountId", request.AccountId);
+        command.Parameters.AddNullableUuid("characterId", request.CharacterId);
+        command.Parameters.AddWithValue("role", RpgDbJson.DbString(request.ResolvedRole));
+        command.Parameters.AddWithValue("status", RpgDbJson.DbString(request.ResolvedStatus));
+        command.Parameters.AddWithValue("displayName", RpgDbJson.DbString(request.ResolvedDisplayName));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> AssignPartyMemberCharacterAsync(Guid accountId, Guid gameStateId, Guid memberId, Guid? characterId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        const string sql = """
+            UPDATE game.party_members m
+            SET character_id = @characterId,
+                updated_at = now()
+            FROM game.game_states gs
+            WHERE gs.id = m.game_state_id
+              AND gs.account_id = @accountId
+              AND m.game_state_id = @gameStateId
+              AND m.id = @memberId
+              AND (
+                    @characterId IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM game.players p
+                        WHERE p.id = @characterId
+                          AND p.game_state_id = @gameStateId
+                    )
+              );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("memberId", memberId);
+        command.Parameters.AddNullableUuid("characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> AssignCharacterToAccountAsync(Guid ownerAccountId, Guid gameStateId, Guid memberAccountId, Guid characterId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        const string sql = """
+            UPDATE game.party_members m
+            SET character_id = @characterId,
+                updated_at = now()
+            FROM game.game_states gs
+            WHERE gs.id = m.game_state_id
+              AND gs.account_id = @ownerAccountId
+              AND m.game_state_id = @gameStateId
+              AND m.account_id = @memberAccountId
+              AND m.status = 'active'
+              AND EXISTS (
+                    SELECT 1
+                    FROM game.players p
+                    WHERE p.id = @characterId
+                      AND p.game_state_id = @gameStateId
+              );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ownerAccountId", ownerAccountId);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        command.Parameters.AddWithValue("memberAccountId", memberAccountId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<bool> RemovePartyMemberAsync(Guid accountId, Guid gameStateId, Guid memberId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
@@ -181,6 +283,28 @@ public sealed class PartyRepository : IPartyRepository
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         command.Parameters.AddWithValue("memberId", memberId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> LeavePartyAsync(Guid accountId, Guid gameStateId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        const string sql = """
+            UPDATE game.party_members m
+            SET status = 'left',
+                updated_at = now()
+            FROM game.game_states gs
+            WHERE gs.id = m.game_state_id
+              AND gs.account_id <> @accountId
+              AND m.account_id = @accountId
+              AND m.game_state_id = @gameStateId
+              AND m.status = 'active';
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 

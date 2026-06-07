@@ -2,6 +2,7 @@ using backend.Shared.Contracts;
 using backend.Shared.Kernel;
 using backend.Modules.GameStates.Contracts;
 using backend.Infrastructure.Auth;
+using backend.Modules.Realtime;
 using backend.Modules.Ai.Application;
 using backend.Modules.Campaigns.Application;
 using backend.Modules.Changes.Application;
@@ -28,11 +29,19 @@ public sealed class GameStatesController : ControllerBase
 {
     private readonly IGameStateService _gameStates;
     private readonly ICurrentUserService _currentUser;
+    private readonly IGameAccessService? _access;
+    private readonly IGameRealtimeNotifier? _realtime;
 
-    public GameStatesController(IGameStateService gameStates, ICurrentUserService currentUser)
+    public GameStatesController(
+        IGameStateService gameStates,
+        ICurrentUserService currentUser,
+        IGameAccessService? access = null,
+        IGameRealtimeNotifier? realtime = null)
     {
         _gameStates = gameStates;
         _currentUser = currentUser;
+        _access = access;
+        _realtime = realtime;
     }
 
     [HttpGet]
@@ -65,6 +74,7 @@ public sealed class GameStatesController : ControllerBase
             return Unauthorized(new MessageResponse { Message = "Сессия устарела. Войдите заново." });
         }
 
+        await NotifyAsync(id.Value, GameRealtimeEvents.GameUpdated, "game created", cancellationToken);
         return CreatedAtAction(nameof(GetGameState), new { gameStateId = id.Value }, new OperationResponse { Id = id.Value, Message = "GameState создан" });
     }
 
@@ -74,9 +84,20 @@ public sealed class GameStatesController : ControllerBase
     public async Task<ActionResult<OperationResponse>> DeleteGameState(Guid gameStateId, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        var deleted = await _gameStates.DeleteGameStateAsync(current.AccountId, gameStateId, cancellationToken);
+        var access = _access is null ? null : await _access.GetAccessAsync(current.AccountId, gameStateId, cancellationToken);
+        if (_access is not null && (access is null || !access.CanManageGame))
+        {
+            return access is null
+                ? NotFound(new MessageResponse { Message = "GameState не найден" })
+                : StatusCode(StatusCodes.Status403Forbidden, new MessageResponse { Message = "Недостаточно прав для удаления игры." });
+        }
+
+        var deleted = await _gameStates.DeleteGameStateAsync(access?.OwnerAccountId ?? current.AccountId, gameStateId, cancellationToken);
         return deleted
             ? Ok(new OperationResponse { Id = gameStateId, Message = "GameState удалён" })
             : NotFound(new MessageResponse { Message = "GameState не найден" });
     }
+
+    private Task NotifyAsync(Guid gameStateId, string eventName, string reason, CancellationToken cancellationToken)
+        => _realtime?.NotifyAsync(gameStateId, eventName, reason, cancellationToken) ?? Task.CompletedTask;
 }

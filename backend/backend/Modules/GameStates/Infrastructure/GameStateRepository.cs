@@ -18,10 +18,17 @@ public sealed class GameStateRepository : IGameStateRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            SELECT data::text
-            FROM game.game_state_documents
-            WHERE account_id = @accountId
-            ORDER BY game_state_id;
+            SELECT DISTINCT ON (doc.game_state_id) doc.data::text
+            FROM game.game_state_documents doc
+            WHERE doc.account_id = @accountId
+               OR EXISTS (
+                    SELECT 1
+                    FROM game.party_members pm
+                    WHERE pm.game_state_id = doc.game_state_id
+                      AND pm.account_id = @accountId
+                      AND pm.status = 'active'
+               )
+            ORDER BY doc.game_state_id;
         """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -42,10 +49,19 @@ public sealed class GameStateRepository : IGameStateRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            SELECT data::text
-            FROM game.game_state_documents
-            WHERE account_id = @accountId
-              AND game_state_id = @gameStateId
+            SELECT doc.data::text
+            FROM game.game_state_documents doc
+            WHERE doc.game_state_id = @gameStateId
+              AND (
+                    doc.account_id = @accountId
+                    OR EXISTS (
+                        SELECT 1
+                        FROM game.party_members pm
+                        WHERE pm.game_state_id = doc.game_state_id
+                          AND pm.account_id = @accountId
+                          AND pm.status = 'active'
+                    )
+              )
             LIMIT 1;
         """;
 
@@ -93,6 +109,8 @@ public sealed class GameStateRepository : IGameStateRepository
             memoryCommand.Parameters.AddWithValue("gameStateId", gameStateId);
             await memoryCommand.ExecuteNonQueryAsync(cancellationToken);
 
+            await EnsureHostPartyAsync(connection, transaction, accountId, gameStateId, cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
             return gameStateId;
         }
@@ -117,5 +135,52 @@ public sealed class GameStateRepository : IGameStateRepository
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("gameStateId", gameStateId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    private static async Task EnsureHostPartyAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid accountId,
+        Guid gameStateId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH ensured_party AS (
+                INSERT INTO game.parties (game_state_id, name)
+                VALUES (@gameStateId, 'Партия')
+                ON CONFLICT (game_state_id)
+                DO UPDATE SET updated_at = game.parties.updated_at
+                RETURNING id
+            )
+            INSERT INTO game.party_members (
+                game_state_id,
+                party_id,
+                account_id,
+                role,
+                status,
+                display_name
+            )
+            SELECT
+                @gameStateId,
+                ensured_party.id,
+                a.id,
+                'host',
+                'active',
+                COALESCE(NULLIF(a.display_name, ''), a.username)
+            FROM ensured_party
+            JOIN auth.accounts a ON a.id = @accountId
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM game.party_members pm
+                WHERE pm.game_state_id = @gameStateId
+                  AND pm.account_id = @accountId
+                  AND pm.status = 'active'
+            );
+        """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("gameStateId", gameStateId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

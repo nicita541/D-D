@@ -6,6 +6,7 @@ public enum RpgResultStatus
     NotFound,
     BadRequest,
     Conflict,
+    Forbidden,
     ServiceUnavailable
 }
 
@@ -18,6 +19,8 @@ public sealed record RpgResult<T>(RpgResultStatus Status, T? Value, string? Mess
     public static RpgResult<T> BadRequest(string message) => new(RpgResultStatus.BadRequest, default, message);
 
     public static RpgResult<T> Conflict(string message) => new(RpgResultStatus.Conflict, default, message);
+
+    public static RpgResult<T> Forbidden(string message) => new(RpgResultStatus.Forbidden, default, message);
 
     public static RpgResult<T> ServiceUnavailable(T? value, string message) => new(RpgResultStatus.ServiceUnavailable, value, message);
 }

@@ -1268,9 +1268,22 @@ public sealed class CharacterDomainRepository : ICharacterDomainRepository
                 SELECT 1
                 FROM game.players p
                 JOIN game.game_states gs ON gs.id = p.game_state_id
-                WHERE gs.account_id = @accountId
-                  AND p.game_state_id = @gameStateId
+                WHERE p.game_state_id = @gameStateId
                   AND p.id = @characterId
+                  AND (
+                        gs.account_id = @accountId
+                        OR EXISTS (
+                            SELECT 1
+                            FROM game.party_members pm
+                            WHERE pm.game_state_id = p.game_state_id
+                              AND pm.account_id = @accountId
+                              AND pm.status = 'active'
+                              AND (
+                                    pm.role IN ('host', 'gm')
+                                    OR pm.character_id = p.id
+                              )
+                        )
+                  )
             );
         """;
 

@@ -8,11 +8,13 @@ using backend.Modules.Combat.DependencyInjection;
 using backend.Modules.Conditions.DependencyInjection;
 using backend.Modules.Economy.DependencyInjection;
 using backend.Modules.GameStates.DependencyInjection;
+using backend.Modules.Invites.DependencyInjection;
 using backend.Modules.Mechanics.DependencyInjection;
 using backend.Modules.Memory.DependencyInjection;
 using backend.Modules.Party.DependencyInjection;
 using backend.Modules.Play.DependencyInjection;
 using backend.Modules.Rest.DependencyInjection;
+using backend.Modules.Realtime;
 using backend.Modules.Story.DependencyInjection;
 using backend.Modules.Time.DependencyInjection;
 using backend.Modules.Travel.DependencyInjection;
@@ -31,6 +33,7 @@ namespace backend
 
             builder.Services.AddAuthModule(builder.Configuration);
             builder.Services.AddGameStatesModule();
+            builder.Services.AddInvitesModule();
             builder.Services.AddCharactersModule();
             builder.Services.AddWorldModule();
             builder.Services.AddTravelModule();
@@ -58,11 +61,13 @@ namespace backend
             }
 
             app.UseHttpsRedirection();
+            app.UseRateLimiter();
 
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();
+            app.MapHub<GameHub>("/hubs/games");
 
             app.Run();
         }

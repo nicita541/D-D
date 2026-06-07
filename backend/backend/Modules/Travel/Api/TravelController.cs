@@ -1,20 +1,7 @@
+using backend.Infrastructure.Auth;
+using backend.Modules.Travel.Application;
 using backend.Shared.Contracts;
 using backend.Shared.Kernel;
-using backend.Infrastructure.Auth;
-using backend.Modules.Ai.Application;
-using backend.Modules.Campaigns.Application;
-using backend.Modules.Changes.Application;
-using backend.Modules.Characters.Application;
-using backend.Modules.Combat.Application;
-using backend.Modules.GameStates.Application;
-using backend.Modules.Mechanics.Application;
-using backend.Modules.Memory.Application;
-using backend.Modules.Party.Application;
-using backend.Modules.Play.Application;
-using backend.Modules.Story.Application;
-using backend.Modules.Travel.Application;
-using backend.Modules.Turns.Application;
-using backend.Modules.World.Application;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -27,24 +14,39 @@ public sealed class TravelController : ControllerBase
 {
     private readonly ITravelService _travel;
     private readonly ICurrentUserService _currentUser;
+    private readonly IGameAccessService _access;
 
-    public TravelController(ITravelService travel, ICurrentUserService currentUser)
+    public TravelController(ITravelService travel, ICurrentUserService currentUser, IGameAccessService access)
     {
         _travel = travel;
         _currentUser = currentUser;
+        _access = access;
     }
 
     [HttpGet("options")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> GetOptions(Guid gameStateId, CancellationToken cancellationToken)
     {
         var current = _currentUser.GetRequiredUser();
-        var result = await _travel.GetOptionsAsync(current.AccountId, gameStateId, cancellationToken);
+        var access = await _access.GetAccessAsync(current.AccountId, gameStateId, cancellationToken);
+        if (access is null)
+        {
+            return NotFound(new MessageResponse { Message = "GameState не найден." });
+        }
+
+        if (!access.CanReadGame)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new MessageResponse { Message = "Недостаточно прав для путешествий." });
+        }
+
+        var result = await _travel.GetOptionsAsync(access.OwnerAccountId, gameStateId, cancellationToken);
         return result.Status switch
         {
             RpgResultStatus.Ok => Ok(result.Value),
             RpgResultStatus.NotFound => NotFound(new MessageResponse { Message = result.Message ?? "GameState не найден." }),
+            RpgResultStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new MessageResponse { Message = result.Message ?? "Недостаточно прав." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }
