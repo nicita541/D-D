@@ -514,6 +514,11 @@ blockquote {
   cursor: pointer;
 }
 
+.quick-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .quick-action:hover {
   border-color: #ca9b4a;
 }
@@ -562,6 +567,230 @@ pre {
   margin-top: 10px;
 }
 
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.home-hero h2 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 38px);
+}
+
+.home-actions {
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.player-grid,
+.launch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.player-grid {
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 16px;
+}
+
+.card-grid.compact {
+  grid-template-columns: 1fr;
+  margin-bottom: 12px;
+}
+
+.character-card,
+.story-card,
+.player-card,
+.mode-card {
+  border: 1px solid #323b4d;
+  border-radius: 8px;
+  background: rgba(23, 27, 34, 0.94);
+  padding: 16px;
+}
+
+.character-card,
+.story-card {
+  display: grid;
+  gap: 14px;
+}
+
+.character-card h2,
+.story-card h2,
+.hero-card h2 {
+  margin: 0;
+}
+
+.player-card {
+  display: grid;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.player-card.selected,
+.story-card.selected {
+  margin-top: 12px;
+  border-color: #ca9b4a;
+  background: rgba(202, 155, 74, 0.1);
+}
+
+.form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.game-row.one-line {
+  grid-template-columns: 1fr auto;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mode-card {
+  display: grid;
+  gap: 8px;
+  color: #dce4ef;
+  text-align: left;
+}
+
+.mode-card.active {
+  border-color: #ca9b4a;
+  background: rgba(202, 155, 74, 0.12);
+}
+
+.player-table-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(320px, 420px);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.chat-panel {
+  min-height: calc(100vh - 150px);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+}
+
+.chat-panel.inactive {
+  background: linear-gradient(180deg, rgba(20, 24, 31, 0.98), rgba(17, 20, 27, 0.98));
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  border-bottom: 1px solid #303746;
+  padding-bottom: 12px;
+}
+
+.inactive-chat {
+  display: grid;
+  place-content: center;
+  min-height: 420px;
+  text-align: center;
+  color: #d7deea;
+  filter: grayscale(0.45);
+  opacity: 0.76;
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 420px;
+  max-height: calc(100vh - 330px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.turn-block {
+  display: grid;
+  gap: 8px;
+}
+
+.message-bubble {
+  max-width: 86%;
+  border-radius: 12px;
+  padding: 12px 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.message-bubble.player {
+  justify-self: end;
+  background: #2f4159;
+  color: #eef6ff;
+}
+
+.message-bubble.master {
+  justify-self: start;
+  background: #202633;
+  color: #f5ead7;
+  border: 1px solid #3a4354;
+}
+
+.chat-form {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-form textarea {
+  min-height: 120px;
+}
+
+.table-side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.dice-tray {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.dice-button {
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ca9b4a;
+  border-radius: 18px;
+  background: radial-gradient(circle at 40% 30%, #f1cf8a, #b06f24);
+  color: #17110a;
+  cursor: pointer;
+}
+
+.dice-button strong {
+  font-size: 28px;
+}
+
+.roll-request {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #3a4354;
+  border-radius: 8px;
+  padding: 12px;
+  background: #171b22;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -570,6 +799,10 @@ pre {
 
 @media (max-width: 1180px) {
   .play-grid,
+  .player-table-grid,
+  .player-grid,
+  .launch-grid,
+  .home-hero,
   .two-column,
   .two-column.wide-left,
   .manage-grid,
@@ -601,7 +834,13 @@ pre {
 
   .scene-facts,
   .stat-grid,
-  .metric-grid {
+  .metric-grid,
+  .form-grid.two,
+  .mode-grid {
     grid-template-columns: 1fr;
+  }
+
+  .message-bubble {
+    max-width: 100%;
   }
 }

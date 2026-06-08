@@ -64,7 +64,18 @@ public sealed class TurnService : ITurnService
             return RpgResult<JsonElement>.BadRequest($"Сообщение игрока не должно превышать {PlayerMessageMaxLength} символов.");
         }
 
-        var creation = await _turns.CreatePendingTurnAsync(accountId, gameStateId, playerMessage, cancellationToken);
+        var visiblePlayerMessage = request.ResolvedVisiblePlayerMessage;
+        var turnSource = string.IsNullOrWhiteSpace(request.TurnSource)
+            ? TurnSources.Player
+            : request.TurnSource.Trim();
+
+        var creation = await _turns.CreatePendingTurnAsync(
+            accountId,
+            gameStateId,
+            playerMessage,
+            visiblePlayerMessage,
+            turnSource,
+            cancellationToken);
         if (creation.Status == PendingTurnCreationStatus.NotFound)
         {
             return RpgResult<JsonElement>.NotFound("GameState не найден.");

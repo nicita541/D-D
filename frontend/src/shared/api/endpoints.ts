@@ -1,5 +1,7 @@
 export { authApi } from './domains/auth';
+export { accountCharactersApi } from './domains/account-characters';
 export { campaignsApi, gameStatesApi } from './domains/games';
+export { gameSessionsApi } from './domains/game-sessions';
 export { invitesApi } from './domains/invites';
 export { partyApi } from './domains/party';
 export { snapshotsApi } from './domains/snapshots';

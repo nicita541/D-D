@@ -1,5 +1,6 @@
 using backend.Infrastructure.DependencyInjection;
 using backend.Modules.Ai.DependencyInjection;
+using backend.Modules.AccountCharacters.DependencyInjection;
 using backend.Modules.Auth.DependencyInjection;
 using backend.Modules.Campaigns.DependencyInjection;
 using backend.Modules.Characters.DependencyInjection;
@@ -8,6 +9,7 @@ using backend.Modules.Combat.DependencyInjection;
 using backend.Modules.Conditions.DependencyInjection;
 using backend.Modules.Economy.DependencyInjection;
 using backend.Modules.GameStates.DependencyInjection;
+using backend.Modules.GameSessions.DependencyInjection;
 using backend.Modules.Invites.DependencyInjection;
 using backend.Modules.Mechanics.DependencyInjection;
 using backend.Modules.Memory.DependencyInjection;
@@ -33,7 +35,9 @@ namespace backend
             builder.Services.AddInfrastructure(builder.Configuration);
 
             builder.Services.AddAuthModule(builder.Configuration);
+            builder.Services.AddAccountCharactersModule();
             builder.Services.AddGameStatesModule();
+            builder.Services.AddGameSessionsModule();
             builder.Services.AddInvitesModule();
             builder.Services.AddCharactersModule();
             builder.Services.AddWorldModule();

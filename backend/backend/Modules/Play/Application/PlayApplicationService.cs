@@ -106,7 +106,8 @@ public sealed class PlayApplicationService : IPlayApplicationService
         {
             Message = string.IsNullOrWhiteSpace(request?.ResolvedPlayerMessage)
                 ? DefaultStartMessage
-                : request.ResolvedPlayerMessage
+                : request.ResolvedPlayerMessage,
+            TurnSource = TurnSources.System
         };
 
         return await _turns.CreateTurnAsync(accountId, gameStateId, startRequest, cancellationToken);
@@ -150,7 +151,7 @@ public sealed class PlayApplicationService : IPlayApplicationService
         return _turns.CreateTurnAsync(
             accountId,
             gameStateId,
-            new CreateTurnRequest { Message = message },
+            new CreateTurnRequest { Message = message, TurnSource = TurnSources.System },
             cancellationToken);
     }
 

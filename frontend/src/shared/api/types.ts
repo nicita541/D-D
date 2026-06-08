@@ -65,6 +65,49 @@ export interface CampaignTemplate extends JsonObject {
   начальныефлаги: JsonObject;
 }
 
+export interface AccountCharacter {
+  id: string;
+  accountId: string;
+  name: string;
+  species?: string | null;
+  className?: string | null;
+  background?: string | null;
+  description?: string | null;
+  alignment?: string | null;
+  attributes: JsonObject;
+  resources: JsonObject;
+  progression: JsonObject;
+  wealth: JsonObject;
+  combat: JsonObject;
+  inventory: JsonObject[];
+  equipment: JsonObject;
+  attacks: JsonObject[];
+  metadata: JsonObject;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateAccountCharacterRequest {
+  name?: string;
+  species?: string;
+  className?: string;
+  background?: string;
+  description?: string;
+}
+
+export interface StartGameSessionRequest {
+  accountCharacterId: string;
+  campaignTemplateId: string;
+  mode: 'solo';
+}
+
+export interface StartGameSessionResponse {
+  gameStateId: string;
+  characterId: string;
+  playUrl: string;
+}
+
 export interface PlayScene {
   title?: string | null;
   summary?: string | null;

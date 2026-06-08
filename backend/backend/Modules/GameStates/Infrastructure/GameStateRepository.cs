@@ -18,8 +18,18 @@ public sealed class GameStateRepository : IGameStateRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            SELECT DISTINCT ON (doc.game_state_id) doc.data::text
+            SELECT DISTINCT ON (doc.game_state_id)
+                (
+                    doc.data
+                    || jsonb_build_object(
+                        'name', gs.name,
+                        'turnNumber', gs.turn_number,
+                        'mode', gs.mode,
+                        'currentLocationId', gs.current_location_id
+                    )
+                )::text
             FROM game.game_state_documents doc
+            JOIN game.game_states gs ON gs.id = doc.game_state_id
             WHERE doc.account_id = @accountId
                OR EXISTS (
                     SELECT 1
@@ -49,8 +59,17 @@ public sealed class GameStateRepository : IGameStateRepository
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
         const string sql = """
-            SELECT doc.data::text
+            SELECT (
+                    doc.data
+                    || jsonb_build_object(
+                        'name', gs.name,
+                        'turnNumber', gs.turn_number,
+                        'mode', gs.mode,
+                        'currentLocationId', gs.current_location_id
+                    )
+                )::text
             FROM game.game_state_documents doc
+            JOIN game.game_states gs ON gs.id = doc.game_state_id
             WHERE doc.game_state_id = @gameStateId
               AND (
                     doc.account_id = @accountId

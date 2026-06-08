@@ -130,7 +130,7 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
 function getAuthReturnTarget(state: unknown) {
   const from = (state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
   if (!from?.pathname) {
-    return '/games';
+    return '/home';
   }
 
   return `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`;

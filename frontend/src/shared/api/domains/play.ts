@@ -11,8 +11,8 @@ export const playApi = {
   act: (gameStateId: string, body: { message: string; characterId?: string; autoApplySafeChanges?: boolean; note?: string }) =>
     apiPost<PlayStateResponse>(`${base(gameStateId)}/act`, body),
   continue: (gameStateId: string, message?: string) => apiPost<PlayStateResponse>(`${base(gameStateId)}/continue`, message ? { message } : {}),
-  resolveAndContinue: (gameStateId: string, requestId: string, characterId?: string) =>
-    apiPost<PlayStateResponse>(`${base(gameStateId)}/resolve-and-continue/${requestId}`, { characterId }),
+  resolveAndContinue: (gameStateId: string, requestId: string, characterId?: string, roll?: number, modifier?: number) =>
+    apiPost<PlayStateResponse>(`${base(gameStateId)}/resolve-and-continue/${requestId}`, { characterId, roll, modifier }),
   applySafeChanges: (gameStateId: string) => apiPost<PlayStateResponse | JsonObject>(`${base(gameStateId)}/apply-safe-changes`, {}),
   applyChange: (gameStateId: string, changeId: string) => apiPost<JsonObject>(`${base(gameStateId)}/apply-change/${changeId}`, {}),
   rejectChange: (gameStateId: string, changeId: string, reason: string) => apiPost<JsonObject>(`${base(gameStateId)}/reject-change/${changeId}`, { reason }),

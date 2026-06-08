@@ -241,6 +241,13 @@ public sealed class CharacterRepository : ICharacterRepository
         jsonb_build_object(
             'id', p.id,
             'gameStateId', p.game_state_id,
+            'name', p.name,
+            'background', p.background,
+            'species', p.species,
+            'className', p.class_name,
+            'subclass', p.subclass,
+            'description', p.description,
+            'alignment', p.alignment,
             'имя', p.name,
             'предыстория', p.background,
             'вид', p.species,
@@ -263,6 +270,37 @@ public sealed class CharacterRepository : ICharacterRepository
                 'nextLevelThreshold', NULLIF(COALESCE(pp.experience_to_next_level, 300), 0),
                 'hpMax', COALESCE(pr.hp_max, 1),
                 'hpCurrent', COALESCE(pr.hp_current, 1)
+            ),
+            'resources', jsonb_build_object(
+                'hpMax', COALESCE(pr.hp_max, 1),
+                'hpCurrent', COALESCE(pr.hp_current, 1),
+                'manaMax', COALESCE(pr.mana_max, 0),
+                'manaCurrent', COALESCE(pr.mana_current, 0),
+                'actionPointsMax', COALESCE(pr.action_points_max, 1),
+                'actionPointsCurrent', COALESCE(pr.action_points_current, 1)
+            ),
+            'attributes', jsonb_build_object(
+                'strength', COALESCE(pa.strength, 10),
+                'dexterity', COALESCE(pa.dexterity, 10),
+                'constitution', COALESCE(pa.constitution, 10),
+                'intelligence', COALESCE(pa.intelligence, 10),
+                'wisdom', COALESCE(pa.wisdom, 10),
+                'charisma', COALESCE(pa.charisma, 10),
+                'initiative', COALESCE(pa.initiative, 0),
+                'speed', COALESCE(pa.speed, 9),
+                'perception', COALESCE(pa.perception, 10)
+            ),
+            'wealth', jsonb_build_object(
+                'copper', COALESCE(w.copper, 0),
+                'silver', COALESCE(w.silver, 0),
+                'gold', COALESCE(w.gold, 0),
+                'platinum', COALESCE(w.platinum, 0)
+            ),
+            'combat', jsonb_build_object(
+                'armorClass', COALESCE(cs.armor_class, 10),
+                'proficiencyBonus', COALESCE(cs.proficiency_bonus, 2),
+                'inCombat', COALESCE(cs.in_combat, false),
+                'initiativeRoll', COALESCE(cs.initiative_roll, 0)
             ),
             'ресурсы', jsonb_build_object(
                 'хпМаксимум', COALESCE(pr.hp_max, 1),

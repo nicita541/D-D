@@ -1,9 +1,11 @@
 using backend.Modules.Ai.DependencyInjection;
+using backend.Modules.AccountCharacters.DependencyInjection;
 using backend.Modules.Campaigns.DependencyInjection;
 using backend.Modules.Characters.DependencyInjection;
 using backend.Modules.Changes.DependencyInjection;
 using backend.Modules.Combat.DependencyInjection;
 using backend.Modules.GameStates.DependencyInjection;
+using backend.Modules.GameSessions.DependencyInjection;
 using backend.Modules.Invites.DependencyInjection;
 using backend.Modules.Mechanics.DependencyInjection;
 using backend.Modules.Memory.DependencyInjection;
@@ -21,7 +23,9 @@ public static class RpgFeatureServiceCollectionExtensions
 {
     public static IServiceCollection AddRpgFeatureServices(this IServiceCollection services)
     {
+        services.AddAccountCharactersModule();
         services.AddGameStatesModule();
+        services.AddGameSessionsModule();
         services.AddInvitesModule();
         services.AddCharactersModule();
         services.AddWorldModule();

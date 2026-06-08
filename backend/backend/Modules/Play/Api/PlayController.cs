@@ -1,4 +1,5 @@
 using backend.Infrastructure.Auth;
+using backend.Modules.AccountCharacters.Application;
 using backend.Modules.Changes.Contracts;
 using backend.Modules.Combat.Contracts;
 using backend.Modules.Mechanics.Contracts;
@@ -28,6 +29,7 @@ public sealed class PlayController : ControllerBase
     private readonly IGameAccessService _access;
     private readonly IGameRealtimeNotifier _realtime;
     private readonly ISnapshotService _snapshots;
+    private readonly IAccountCharacterSyncService _characterSync;
 
     public PlayController(
         IPlayApplicationService play,
@@ -36,7 +38,8 @@ public sealed class PlayController : ControllerBase
         ICurrentUserService currentUser,
         IGameAccessService access,
         IGameRealtimeNotifier realtime,
-        ISnapshotService snapshots)
+        ISnapshotService snapshots,
+        IAccountCharacterSyncService characterSync)
     {
         _play = play;
         _travel = travel;
@@ -45,6 +48,7 @@ public sealed class PlayController : ControllerBase
         _access = access;
         _realtime = realtime;
         _snapshots = snapshots;
+        _characterSync = characterSync;
     }
 
     [HttpGet("status")]
@@ -59,7 +63,8 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
-        var result = await _play.StatusAsync(access.Value!.OwnerAccountId, gameStateId, cancellationToken);
+        await _characterSync.ImportLatestProfileIntoGameAsync(access.Value!.OwnerAccountId, gameStateId, null, cancellationToken);
+        var result = await _play.StatusAsync(access.Value.OwnerAccountId, gameStateId, cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -79,8 +84,9 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
-        var result = await _play.ActAsync(access.Value!.OwnerAccountId, gameStateId, payload, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "play act", cancellationToken);
+        await _characterSync.ImportLatestProfileIntoGameAsync(access.Value!.OwnerAccountId, gameStateId, payload.ResolvedCharacterId, cancellationToken);
+        var result = await _play.ActAsync(access.Value.OwnerAccountId, gameStateId, payload, cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "play act", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -99,8 +105,9 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
-        var result = await _play.StartAsync(access.Value!.OwnerAccountId, gameStateId, request, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "play started", cancellationToken);
+        await _characterSync.ImportLatestProfileIntoGameAsync(access.Value!.OwnerAccountId, gameStateId, null, cancellationToken);
+        var result = await _play.StartAsync(access.Value.OwnerAccountId, gameStateId, request, cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "play started", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -119,8 +126,9 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
-        var result = await _play.MessageAsync(access.Value!.OwnerAccountId, gameStateId, request, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "play message", cancellationToken);
+        await _characterSync.ImportLatestProfileIntoGameAsync(access.Value!.OwnerAccountId, gameStateId, null, cancellationToken);
+        var result = await _play.MessageAsync(access.Value.OwnerAccountId, gameStateId, request, cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "play message", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -144,7 +152,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.ResolveMechanicRequestAsync(access.Value!.OwnerAccountId, gameStateId, requestId, payload, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "mechanic request resolved", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.GameUpdated, "mechanic request resolved", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -169,7 +177,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.ResolveAndContinueAsync(access.Value!.OwnerAccountId, gameStateId, requestId, payload, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "mechanic request resolved and continued", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "mechanic request resolved and continued", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -195,7 +203,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.ContinueAsync(access.Value!.OwnerAccountId, gameStateId, request, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "play continued", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "play continued", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -219,7 +227,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.ApplyChangeAsync(access.Value!.OwnerAccountId, gameStateId, changeId, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "change applied", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.GameUpdated, "change applied", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -236,7 +244,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.RejectChangeAsync(access.Value!.OwnerAccountId, gameStateId, changeId, request, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "change rejected", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.GameUpdated, "change rejected", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -254,7 +262,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.ApplySafeChangesAsync(access.Value!.OwnerAccountId, gameStateId, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "safe changes applied", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.GameUpdated, "safe changes applied", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -272,7 +280,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _travel.TravelAsync(access.Value!.OwnerAccountId, gameStateId, request ?? new PlayTravelRequest(), cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TravelUpdated, "travel", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TravelUpdated, "travel", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -290,7 +298,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _travel.MoveLocationAsync(access.Value!.OwnerAccountId, gameStateId, request ?? new PlayTravelRequest(), cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TravelUpdated, "location moved", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TravelUpdated, "location moved", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -315,7 +323,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _combat.StartAsync(access.Value!.OwnerAccountId, gameStateId, payload, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.CombatUpdated, "combat started", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.CombatUpdated, "combat started", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -333,7 +341,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _combat.ActionAsync(access.Value!.OwnerAccountId, gameStateId, request ?? new PlayCombatActionRequest(), cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.CombatUpdated, "combat action", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.CombatUpdated, "combat action", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -350,7 +358,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _combat.EndAsync(access.Value!.OwnerAccountId, gameStateId, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.CombatUpdated, "combat ended", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.CombatUpdated, "combat ended", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -370,7 +378,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _combat.ContinueAsync(access.Value!.OwnerAccountId, gameStateId, request ?? new PlayContinueRequest(), cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "combat continued", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.TurnAdded, "combat continued", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -389,7 +397,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _combat.ResolveOutcomeAsync(access.Value!.OwnerAccountId, gameStateId, request ?? new PlayCombatResolveOutcomeRequest(), cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.CombatUpdated, "combat outcome resolved", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.CombatUpdated, "combat outcome resolved", cancellationToken);
         return this.ToActionResult(RedactIfNeeded(result, access.Value));
     }
 
@@ -431,7 +439,7 @@ public sealed class PlayController : ControllerBase
         }
 
         var result = await _play.BootstrapAsync(access.Value!.OwnerAccountId, gameStateId, cancellationToken);
-        await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "game bootstrapped", cancellationToken);
+        await NotifyIfOk(result, access.Value, gameStateId, GameRealtimeEvents.GameUpdated, "game bootstrapped", cancellationToken);
         return this.ToActionResult(result);
     }
 
@@ -512,6 +520,7 @@ public sealed class PlayController : ControllerBase
 
     private async Task NotifyIfOk<T>(
         RpgResult<T> result,
+        GameAccess access,
         Guid gameStateId,
         string eventName,
         string reason,
@@ -519,6 +528,7 @@ public sealed class PlayController : ControllerBase
     {
         if (result.Status == RpgResultStatus.Ok)
         {
+            await _characterSync.ExportGameCharactersAsync(access.OwnerAccountId, gameStateId, cancellationToken);
             await _realtime.NotifyAsync(gameStateId, eventName, reason, cancellationToken);
         }
     }

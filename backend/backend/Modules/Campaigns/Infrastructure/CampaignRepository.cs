@@ -21,6 +21,13 @@ public sealed class CampaignRepository : ICampaignRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'id', id,
+                'title', title,
+                'genre', genre,
+                'tone', tone,
+                'summary', summary,
+                'openingScene', opening_scene,
+                'mainGoal', main_goal,
+                'initialFlags', initial_flags,
                 'название', title,
                 'жанр', genre,
                 'тон', tone,
@@ -52,6 +59,13 @@ public sealed class CampaignRepository : ICampaignRepository
         const string sql = """
             SELECT jsonb_build_object(
                 'id', id,
+                'title', title,
+                'genre', genre,
+                'tone', tone,
+                'summary', summary,
+                'openingScene', opening_scene,
+                'mainGoal', main_goal,
+                'initialFlags', initial_flags,
                 'название', title,
                 'жанр', genre,
                 'тон', tone,

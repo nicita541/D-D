@@ -1,4 +1,6 @@
 export const queryKeys = {
+  accountCharacters: ['account-characters'] as const,
+  accountCharacter: (characterId: string) => ['account-characters', characterId] as const,
   games: ['games'] as const,
   campaigns: ['campaigns'] as const,
   game: (gameStateId: string) => ['games', gameStateId] as const,

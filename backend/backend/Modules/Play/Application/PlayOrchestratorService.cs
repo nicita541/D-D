@@ -153,7 +153,11 @@ public sealed class PlayOrchestratorService : IPlayOrchestratorService
         }
 
         var continueMessage = BuildResolveContinueMessage(request, resolve.Value);
-        var turn = await _turns.CreateTurnAsync(accountId, gameStateId, new CreateTurnRequest { Message = continueMessage }, cancellationToken);
+        var turn = await _turns.CreateTurnAsync(
+            accountId,
+            gameStateId,
+            new CreateTurnRequest { Message = continueMessage, TurnSource = TurnSources.System },
+            cancellationToken);
         if (turn.Status != RpgResultStatus.Ok)
         {
             return MapTurnFailure(turn);

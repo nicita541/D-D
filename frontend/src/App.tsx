@@ -2,6 +2,11 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage, RegisterPage } from './auth/AuthPages';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AdminRoute } from './auth/AdminRoute';
+import { HomePage } from './player/HomePage';
+import { CharactersPage } from './player/CharactersPage';
+import { CharacterEditorPage } from './player/CharacterEditorPage';
+import { StoriesPage } from './player/StoriesPage';
+import { LaunchPage } from './player/LaunchPage';
 import { GamesPage } from './game-states/GamesPage';
 import { SetupPage } from './characters/SetupPage';
 import { SetupRedirect } from './characters/SetupRedirect';
@@ -17,12 +22,18 @@ import { CampaignsAdminPage } from './admin/CampaignsAdminPage';
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/games" replace />} />
+      <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/invites/:token" element={<InviteAcceptPage />} />
 
       <Route element={<ProtectedRoute />}>
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/characters/new" element={<CharacterEditorPage />} />
+        <Route path="/characters/:characterId/edit" element={<CharacterEditorPage />} />
+        <Route path="/stories" element={<StoriesPage />} />
+        <Route path="/launch" element={<LaunchPage />} />
         <Route path="/games" element={<GamesPage />} />
         <Route path="/setup" element={<SetupRedirect />} />
         <Route path="/games/:gameStateId/setup" element={<SetupPage />} />
@@ -38,7 +49,7 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/games" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 }

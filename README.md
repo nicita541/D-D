@@ -54,6 +54,25 @@ powershell -ExecutionPolicy Bypass -File .\scripts\api-critical-smoke.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\closed-loop-game-smoke.ps1
 ```
 
+## Player Solo flow
+
+The default UI path is now the normal player route, not the management screen:
+
+1. Open `http://localhost:3000`.
+2. Register or log in.
+3. Open `Characters`, generate a base hero, or use an existing account hero.
+4. Open `Stories`, choose a seeded story.
+5. Open `Launch`, keep `Solo` selected, and press `Play`.
+6. In `/games/<gameStateId>/play`, press `Start`; the left side is the master chat, the right side is the table, dice, hero state, and quick actions.
+
+Account heroes are stored in `game.account_characters`. A solo session imports the latest hero into the selected story and exports level, XP, resources, money, inventory, equipment-compatible profile data, and attacks back to the account hero after successful play changes.
+
+Runtime smoke for this path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\player-solo-smoke.ps1
+```
+
 ## Co-op MVP smoke
 
 After the stack is running, use these local checks for the first playable co-op slice:

@@ -167,7 +167,7 @@ public sealed class PlayCombatFacade : IPlayCombatFacade
         var result = await _turns.CreateTurnAsync(
             accountId,
             gameStateId,
-            new CreateTurnRequest { Message = $"Продолжи активный бой. {message}" },
+            new CreateTurnRequest { Message = $"Продолжи активный бой. {message}", TurnSource = TurnSources.System },
             cancellationToken);
         if (result.Status != RpgResultStatus.Ok)
         {

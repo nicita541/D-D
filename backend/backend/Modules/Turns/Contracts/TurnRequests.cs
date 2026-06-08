@@ -15,6 +15,27 @@ public sealed class CreateTurnRequest
     public string ResolvedPlayerMessage => string.IsNullOrWhiteSpace(PlayerMessage)
         ? Message?.Trim() ?? string.Empty
         : PlayerMessage.Trim();
+
+    [JsonIgnore]
+    public string? VisiblePlayerMessage { get; init; }
+
+    [JsonIgnore]
+    public string TurnSource { get; init; } = TurnSources.Player;
+
+    [JsonIgnore]
+    public string? ResolvedVisiblePlayerMessage => VisiblePlayerMessage is null
+        ? string.Equals(TurnSource, TurnSources.Player, StringComparison.OrdinalIgnoreCase)
+            ? ResolvedPlayerMessage
+            : null
+        : string.IsNullOrWhiteSpace(VisiblePlayerMessage)
+            ? null
+            : VisiblePlayerMessage.Trim();
+}
+
+public static class TurnSources
+{
+    public const string Player = "player";
+    public const string System = "system";
 }
 
 public sealed record GameChangeProposal(
@@ -26,7 +47,9 @@ public sealed record PendingTurn(
     Guid GameStateId,
     Guid AccountId,
     int TurnNumber,
-    string PlayerMessage);
+    string PlayerMessage,
+    string? VisiblePlayerMessage,
+    string TurnSource);
 
 public enum PendingTurnCreationStatus
 {

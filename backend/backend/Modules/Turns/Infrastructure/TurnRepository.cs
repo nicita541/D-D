@@ -15,7 +15,13 @@ public sealed class TurnRepository : ITurnRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<PendingTurnCreationResult> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken)
+    public async Task<PendingTurnCreationResult> CreatePendingTurnAsync(
+        Guid accountId,
+        Guid gameStateId,
+        string playerMessage,
+        string? visiblePlayerMessage,
+        string turnSource,
+        CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -82,6 +88,8 @@ public sealed class TurnRepository : ITurnRepository
                     account_id,
                     turn_number,
                     player_message,
+                    visible_player_message,
+                    turn_source,
                     status
                 )
                 VALUES
@@ -91,6 +99,8 @@ public sealed class TurnRepository : ITurnRepository
                     @accountId,
                     @turnNumber,
                     @playerMessage,
+                    @visiblePlayerMessage,
+                    @turnSource,
                     'pending'
                 )
                 RETURNING id;
@@ -101,12 +111,21 @@ public sealed class TurnRepository : ITurnRepository
             insertCommand.Parameters.AddWithValue("accountId", accountId);
             insertCommand.Parameters.AddWithValue("turnNumber", turnNumber);
             insertCommand.Parameters.AddWithValue("playerMessage", playerMessage);
+            AddNullableTextParameter(insertCommand, "visiblePlayerMessage", visiblePlayerMessage);
+            insertCommand.Parameters.AddWithValue("turnSource", string.IsNullOrWhiteSpace(turnSource) ? TurnSources.Player : turnSource);
 
             var turnId = (Guid)(await insertCommand.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("Turn id was not returned."));
 
             await transaction.CommitAsync(cancellationToken);
-            return PendingTurnCreationResult.Created(new PendingTurn(turnId, gameStateId, accountId, turnNumber, playerMessage));
+            return PendingTurnCreationResult.Created(new PendingTurn(
+                turnId,
+                gameStateId,
+                accountId,
+                turnNumber,
+                playerMessage,
+                visiblePlayerMessage,
+                string.IsNullOrWhiteSpace(turnSource) ? TurnSources.Player : turnSource));
         }
         catch
         {
@@ -161,7 +180,11 @@ public sealed class TurnRepository : ITurnRepository
             }
 
             await UpdateGameStateTurnNumberAsync(connection, transaction, turn, cancellationToken);
-            await InsertLogEntryAsync(connection, transaction, turn.GameStateId, turn.TurnNumber, "player", turn.PlayerMessage, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(turn.VisiblePlayerMessage))
+            {
+                await InsertLogEntryAsync(connection, transaction, turn.GameStateId, turn.TurnNumber, "player", turn.VisiblePlayerMessage, cancellationToken);
+            }
+
             await InsertLogEntryAsync(connection, transaction, turn.GameStateId, turn.TurnNumber, "master", masterAnswer, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
@@ -238,7 +261,8 @@ public sealed class TurnRepository : ITurnRepository
                 'gameStateId', t.game_state_id,
                 'turnNumber', t.turn_number,
                 'status', t.status,
-                'playerMessage', t.player_message,
+                'playerMessage', t.visible_player_message,
+                'turnSource', t.turn_source,
                 'masterAnswer', t.master_answer,
                 'aiModel', t.ai_model,
                 'errorMessage', t.error_message,
@@ -275,7 +299,8 @@ public sealed class TurnRepository : ITurnRepository
                 'gameStateId', t.game_state_id,
                 'turnNumber', t.turn_number,
                 'status', t.status,
-                'playerMessage', t.player_message,
+                'playerMessage', t.visible_player_message,
+                'turnSource', t.turn_source,
                 'masterAnswer', t.master_answer,
                 'rawAiResponse', t.raw_ai_response,
                 'aiModel', t.ai_model,
@@ -440,5 +465,11 @@ public sealed class TurnRepository : ITurnRepository
     {
         var parameter = command.Parameters.Add(name, NpgsqlDbType.Jsonb);
         parameter.Value = string.IsNullOrWhiteSpace(json) ? DBNull.Value : json;
+    }
+
+    private static void AddNullableTextParameter(NpgsqlCommand command, string name, string? value)
+    {
+        var parameter = command.Parameters.Add(name, NpgsqlDbType.Text);
+        parameter.Value = string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
     }
 }

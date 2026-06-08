@@ -5,7 +5,13 @@ namespace backend.Modules.Turns.Infrastructure;
 
 public interface ITurnRepository
 {
-    Task<PendingTurnCreationResult> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken);
+    Task<PendingTurnCreationResult> CreatePendingTurnAsync(
+        Guid accountId,
+        Guid gameStateId,
+        string playerMessage,
+        string? visiblePlayerMessage,
+        string turnSource,
+        CancellationToken cancellationToken);
 
     Task<JsonElement?> CompleteTurnAsync(
         PendingTurn turn,

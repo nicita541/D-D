@@ -84,6 +84,40 @@ public sealed class TurnServiceTests
         Assert.Empty(repository.LastChanges!);
     }
 
+    [Fact]
+    public async Task CreateTurn_PlayerTurn_UsesMessageAsVisiblePlayerMessage()
+    {
+        var repository = new FakeTurnRepository();
+        var service = CreateService(
+            repository,
+            new QueueOllamaClient(new OllamaGenerateResult("model", """{"master_answer":"Ответ мастера","changes":[]}""", """{"response":"ok"}""")));
+
+        var result = await service.CreateTurnAsync(Guid.NewGuid(), Guid.NewGuid(), new CreateTurnRequest { Message = "Осмотреться" }, CancellationToken.None);
+
+        Assert.Equal(RpgResultStatus.Ok, result.Status);
+        Assert.Equal("Осмотреться", repository.LastVisiblePlayerMessage);
+        Assert.Equal(TurnSources.Player, repository.LastTurnSource);
+    }
+
+    [Fact]
+    public async Task CreateTurn_SystemTurn_HidesVisiblePlayerMessage()
+    {
+        var repository = new FakeTurnRepository();
+        var service = CreateService(
+            repository,
+            new QueueOllamaClient(new OllamaGenerateResult("model", """{"master_answer":"Ответ мастера","changes":[]}""", """{"response":"ok"}""")));
+
+        var result = await service.CreateTurnAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new CreateTurnRequest { Message = "Начни новую одиночную RPG-сцену.", TurnSource = TurnSources.System },
+            CancellationToken.None);
+
+        Assert.Equal(RpgResultStatus.Ok, result.Status);
+        Assert.Null(repository.LastVisiblePlayerMessage);
+        Assert.Equal(TurnSources.System, repository.LastTurnSource);
+    }
+
     [Theory]
     [InlineData("запросить_бросок")]
     [InlineData("обновить_память")]
@@ -192,10 +226,21 @@ public sealed class TurnServiceTests
         public IReadOnlyList<GameChangeProposal>? LastChanges { get; private set; }
         public string? LastFailMessage { get; private set; }
 
-        public Task<PendingTurnCreationResult> CreatePendingTurnAsync(Guid accountId, Guid gameStateId, string playerMessage, CancellationToken cancellationToken)
+        public string? LastVisiblePlayerMessage { get; private set; }
+        public string? LastTurnSource { get; private set; }
+
+        public Task<PendingTurnCreationResult> CreatePendingTurnAsync(
+            Guid accountId,
+            Guid gameStateId,
+            string playerMessage,
+            string? visiblePlayerMessage,
+            string turnSource,
+            CancellationToken cancellationToken)
         {
             CreateCalled = true;
-            return Task.FromResult(CreationResult ?? PendingTurnCreationResult.Created(new PendingTurn(Guid.NewGuid(), gameStateId, accountId, 1, playerMessage)));
+            LastVisiblePlayerMessage = visiblePlayerMessage;
+            LastTurnSource = turnSource;
+            return Task.FromResult(CreationResult ?? PendingTurnCreationResult.Created(new PendingTurn(Guid.NewGuid(), gameStateId, accountId, 1, playerMessage, visiblePlayerMessage, turnSource)));
         }
 
         public Task<JsonElement?> CompleteTurnAsync(PendingTurn turn, string masterAnswer, string rawAiResponse, string aiModel, IReadOnlyList<GameChangeProposal> changes, CancellationToken cancellationToken)

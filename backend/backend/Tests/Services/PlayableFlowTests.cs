@@ -263,6 +263,32 @@ public sealed class PlayableFlowTests
     }
 
     [Fact]
+    public async Task ResolveAndContinue_CreatesSystemTurn()
+    {
+        var turnService = new FakeTurnService();
+        var service = new PlayOrchestratorService(
+            new FakeGameStateService(),
+            new FakeCharacterService(),
+            turnService,
+            new FakeGameChangeService(),
+            new FakeMechanicRequestService(hasPendingRequest: false),
+            new FakePlayStateService("narration"));
+
+        var result = await service.ResolveAndContinueAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new PlayResolveAndContinueRequest { CharacterId = Guid.NewGuid() },
+            CancellationToken.None);
+
+        Assert.Equal(RpgResultStatus.Ok, result.Status);
+        Assert.Equal(1, turnService.CreateTurnCalls);
+        Assert.NotNull(turnService.LastRequest);
+        Assert.Equal(TurnSources.System, turnService.LastRequest!.TurnSource);
+        Assert.Null(turnService.LastRequest.ResolvedVisiblePlayerMessage);
+    }
+
+    [Fact]
     public async Task ApplySafeChanges_SkipsDangerousUnsupportedAndUnknownOperations()
     {
         var changes = new FakeGameChangeService
@@ -403,12 +429,15 @@ public sealed class PlayableFlowTests
     {
         public int CreateTurnCalls { get; private set; }
 
+        public CreateTurnRequest? LastRequest { get; private set; }
+
         public RpgResult<JsonElement> CreateTurnResult { get; set; } =
             RpgResult<JsonElement>.Ok(JsonSerializer.SerializeToElement(new { masterAnswer = "ok" }));
 
         public Task<RpgResult<JsonElement>> CreateTurnAsync(Guid accountId, Guid gameStateId, CreateTurnRequest request, CancellationToken cancellationToken)
         {
             CreateTurnCalls++;
+            LastRequest = request;
             return Task.FromResult(CreateTurnResult);
         }
 
