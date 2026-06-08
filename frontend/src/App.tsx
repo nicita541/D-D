@@ -3,8 +3,10 @@ import { LoginPage, RegisterPage } from './auth/AuthPages';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AdminRoute } from './auth/AdminRoute';
 import { GamesPage } from './game-states/GamesPage';
+import { SetupPage } from './characters/SetupPage';
 import { SetupRedirect } from './characters/SetupRedirect';
 import { PlayPage } from './play/PlayPage';
+import { GameInvitePage, InviteAcceptPage } from './invites/InvitePages';
 import { CharactersManagePage } from './manage/CharactersManagePage';
 import { WorldManagePage } from './manage/WorldManagePage';
 import { StoryManagePage } from './manage/StoryManagePage';
@@ -18,10 +20,13 @@ export default function App() {
       <Route path="/" element={<Navigate to="/games" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/invites/:token" element={<InviteAcceptPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/games" element={<GamesPage />} />
-        <Route path="/games/:gameStateId/setup" element={<SetupRedirect />} />
+        <Route path="/setup" element={<SetupRedirect />} />
+        <Route path="/games/:gameStateId/setup" element={<SetupPage />} />
+        <Route path="/games/:gameStateId/invite" element={<GameInvitePage />} />
         <Route path="/games/:gameStateId/play" element={<PlayPage />} />
         <Route path="/games/:gameStateId/manage/characters" element={<CharactersManagePage />} />
         <Route path="/games/:gameStateId/manage/world" element={<WorldManagePage />} />

@@ -15,6 +15,7 @@ using backend.Modules.Party.DependencyInjection;
 using backend.Modules.Play.DependencyInjection;
 using backend.Modules.Rest.DependencyInjection;
 using backend.Modules.Realtime;
+using backend.Modules.Snapshots.DependencyInjection;
 using backend.Modules.Story.DependencyInjection;
 using backend.Modules.Time.DependencyInjection;
 using backend.Modules.Travel.DependencyInjection;
@@ -50,6 +51,7 @@ namespace backend
             builder.Services.AddCampaignsModule();
             builder.Services.AddPartyModule();
             builder.Services.AddStoryModule();
+            builder.Services.AddSnapshotsModule();
             builder.Services.AddPlayModule();
 
             var app = builder.Build();

@@ -1,8 +1,26 @@
 # Frontend API coverage
 
-Generated from the running backend Swagger document. Total routes: **172**.
+Generated from the running backend Swagger document and updated for the co-op MVP. Current routed backend surface: **183** routes.
 
 The frontend exposes unique backend capabilities through player, owner-management, or admin interfaces. Compatibility aliases are intentionally not rendered as separate actions. Player mode never renders memory master secrets or management-only actions.
+
+## Co-op MVP additions
+
+| Route | Interface | Coverage |
+|---|---|---|
+| `POST api/game-states/{gameStateId}/invites` | host invite | `/games/:gameStateId/invite` |
+| `GET api/invites/{token}` | public invite | `/invites/:token`, no login required for preview |
+| `POST api/invites/{token}/accept` | authenticated invite | `/invites/:token`, returns to invite page after login/register |
+| `DELETE api/game-states/{gameStateId}/invites/{inviteId}` | host invite | API client ready; revoke UI remains host-only |
+| `PATCH api/game-states/{gameStateId}/party/members/{memberId}` | party management | `PartyPanel` in `/games/:id/play`, host-only role controls |
+| `POST api/game-states/{gameStateId}/party/members/{memberId}/character` | party management | `PartyPanel`, host-only assignment |
+| `POST api/game-states/{gameStateId}/party/members/me/character` | player setup | `/games/:id/setup` and `PartyPanel` for current active member |
+| `DELETE api/game-states/{gameStateId}/party/members/me` | party management | API client ready; leave flow can be exposed after MVP smoke |
+| `GET api/game-states/{gameStateId}/snapshots` | game/read | `SnapshotsPanel` in `/games/:id/play`, visible to party members |
+| `POST api/game-states/{gameStateId}/snapshots` | host rollback | `SnapshotsPanel`, host-only create |
+| `POST api/game-states/{gameStateId}/snapshots/{snapshotId}/restore` | host rollback | `SnapshotsPanel`, host-only restore with confirmation |
+
+SignalR `/hubs/games` is not part of Swagger. The frontend connects from `/games/:id/play`, joins by `gameStateId`, invalidates React Query caches for game, party, snapshots, combat, loot and history events, and keeps 10s polling fallback enabled.
 
 | # | Route | Interface | Coverage |
 |---:|---|---|---|

@@ -109,4 +109,56 @@ export interface PlayStateResponse {
   restAvailable?: JsonObject | null;
   characterStates: JsonObject[];
   generatedAt: string;
+  permissions?: PlayPermissions | null;
+  currentPartyMember?: CurrentPartyMember | null;
+}
+
+export interface PlayPermissions {
+  canRead: boolean;
+  canPlay: boolean;
+  canManage: boolean;
+  canViewSecrets: boolean;
+  canControlSelectedCharacter: boolean;
+}
+
+export interface CurrentPartyMember {
+  id?: string | null;
+  role: string;
+  characterId?: string | null;
+  isHost: boolean;
+}
+
+export interface InviteCreatedResponse {
+  id: string;
+  gameStateId: string;
+  token: string;
+  role: string;
+  maxUses: number;
+  expiresAt: string;
+}
+
+export interface InvitePreviewResponse {
+  id: string;
+  gameStateId: string;
+  gameName: string;
+  role: string;
+  usesRemaining: number;
+  expiresAt: string;
+}
+
+export interface InviteAcceptedResponse {
+  gameStateId: string;
+  partyMemberId: string;
+  role: string;
+  message: string;
+}
+
+export interface SnapshotDto {
+  id: string;
+  gameStateId: string;
+  reason: string;
+  createdByAccountId?: string | null;
+  createdAt: string;
+  restoredByAccountId?: string | null;
+  restoredAt?: string | null;
 }

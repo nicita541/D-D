@@ -190,6 +190,17 @@ public sealed class PartyRepository : IPartyRepository
                         WHERE p.id = @characterId
                           AND p.game_state_id = @gameStateId
                     )
+              )
+              AND (
+                    @characterId IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM game.party_members occupied
+                        WHERE occupied.game_state_id = @gameStateId
+                          AND occupied.character_id = @characterId
+                          AND occupied.status = 'active'
+                          AND occupied.id <> m.id
+                    )
               );
         """;
 
@@ -226,6 +237,17 @@ public sealed class PartyRepository : IPartyRepository
                         WHERE p.id = @characterId
                           AND p.game_state_id = @gameStateId
                     )
+              )
+              AND (
+                    @characterId IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM game.party_members occupied
+                        WHERE occupied.game_state_id = @gameStateId
+                          AND occupied.character_id = @characterId
+                          AND occupied.status = 'active'
+                          AND occupied.id <> m.id
+                    )
               );
         """;
 
@@ -256,6 +278,14 @@ public sealed class PartyRepository : IPartyRepository
                     FROM game.players p
                     WHERE p.id = @characterId
                       AND p.game_state_id = @gameStateId
+              )
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM game.party_members occupied
+                    WHERE occupied.game_state_id = @gameStateId
+                      AND occupied.character_id = @characterId
+                      AND occupied.status = 'active'
+                      AND occupied.account_id <> @memberAccountId
               );
         """;
 

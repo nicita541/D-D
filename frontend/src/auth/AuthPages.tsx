@@ -15,8 +15,10 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
 
+  const target = getAuthReturnTarget(location.state);
+
   if (auth.isAuthenticated) {
-    return <Navigate to="/games" replace />;
+    return <Navigate to={target} replace />;
   }
 
   async function submit(event: FormEvent) {
@@ -25,7 +27,6 @@ export function LoginPage() {
     setPending(true);
     try {
       await authApi.login({ emailOrUsername, password });
-      const target = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/games';
       navigate(target, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err));
@@ -58,6 +59,7 @@ export function LoginPage() {
 export function RegisterPage() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -65,8 +67,10 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
 
+  const target = getAuthReturnTarget(location.state);
+
   if (auth.isAuthenticated) {
-    return <Navigate to="/games" replace />;
+    return <Navigate to={target} replace />;
   }
 
   async function submit(event: FormEvent) {
@@ -75,7 +79,7 @@ export function RegisterPage() {
     setPending(true);
     try {
       await authApi.register({ email, username, password, displayName });
-      navigate('/games', { replace: true });
+      navigate(target, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -121,4 +125,13 @@ function AuthLayout({ title, subtitle, children }: { title: string; subtitle: st
       </Panel>
     </main>
   );
+}
+
+function getAuthReturnTarget(state: unknown) {
+  const from = (state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
+  if (!from?.pathname) {
+    return '/games';
+  }
+
+  return `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`;
 }

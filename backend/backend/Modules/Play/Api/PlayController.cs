@@ -6,6 +6,7 @@ using backend.Modules.Memory.Contracts;
 using backend.Modules.Play.Application;
 using backend.Modules.Play.Contracts;
 using backend.Modules.Realtime;
+using backend.Modules.Snapshots.Application;
 using backend.Modules.Turns.Contracts;
 using backend.Shared.Contracts;
 using backend.Shared.Kernel;
@@ -26,6 +27,7 @@ public sealed class PlayController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IGameAccessService _access;
     private readonly IGameRealtimeNotifier _realtime;
+    private readonly ISnapshotService _snapshots;
 
     public PlayController(
         IPlayApplicationService play,
@@ -33,7 +35,8 @@ public sealed class PlayController : ControllerBase
         IPlayCombatFacade combat,
         ICurrentUserService currentUser,
         IGameAccessService access,
-        IGameRealtimeNotifier realtime)
+        IGameRealtimeNotifier realtime,
+        ISnapshotService snapshots)
     {
         _play = play;
         _travel = travel;
@@ -41,6 +44,7 @@ public sealed class PlayController : ControllerBase
         _currentUser = currentUser;
         _access = access;
         _realtime = realtime;
+        _snapshots = snapshots;
     }
 
     [HttpGet("status")]
@@ -184,6 +188,12 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
+        var snapshotError = await CreateAutoSnapshotAsync(access.Value!, gameStateId, "auto: before play continue", cancellationToken);
+        if (snapshotError is not null)
+        {
+            return snapshotError;
+        }
+
         var result = await _play.ContinueAsync(access.Value!.OwnerAccountId, gameStateId, request, cancellationToken);
         await NotifyIfOk(result, gameStateId, GameRealtimeEvents.TurnAdded, "play continued", cancellationToken);
         return this.ToActionResult(result);
@@ -200,6 +210,12 @@ public sealed class PlayController : ControllerBase
         if (access.Error is not null)
         {
             return access.Error;
+        }
+
+        var snapshotError = await CreateAutoSnapshotAsync(access.Value!, gameStateId, $"auto: before apply change {changeId}", cancellationToken);
+        if (snapshotError is not null)
+        {
+            return snapshotError;
         }
 
         var result = await _play.ApplyChangeAsync(access.Value!.OwnerAccountId, gameStateId, changeId, cancellationToken);
@@ -290,6 +306,12 @@ public sealed class PlayController : ControllerBase
         if (access.Error is not null)
         {
             return access.Error;
+        }
+
+        var snapshotError = await CreateAutoSnapshotAsync(access.Value!, gameStateId, "auto: before combat start", cancellationToken);
+        if (snapshotError is not null)
+        {
+            return snapshotError;
         }
 
         var result = await _combat.StartAsync(access.Value!.OwnerAccountId, gameStateId, payload, cancellationToken);
@@ -402,6 +424,12 @@ public sealed class PlayController : ControllerBase
             return access.Error;
         }
 
+        var snapshotError = await CreateAutoSnapshotAsync(access.Value!, gameStateId, "auto: before bootstrap", cancellationToken);
+        if (snapshotError is not null)
+        {
+            return snapshotError;
+        }
+
         var result = await _play.BootstrapAsync(access.Value!.OwnerAccountId, gameStateId, cancellationToken);
         await NotifyIfOk(result, gameStateId, GameRealtimeEvents.GameUpdated, "game bootstrapped", cancellationToken);
         return this.ToActionResult(result);
@@ -451,12 +479,35 @@ public sealed class PlayController : ControllerBase
 
     private static RpgResult<PlayStateResponse> RedactIfNeeded(RpgResult<PlayStateResponse> result, GameAccess access)
     {
-        if (access.CanViewSecrets || result.Status != RpgResultStatus.Ok || result.Value is null)
+        if (result.Status != RpgResultStatus.Ok || result.Value is null)
         {
             return result;
         }
 
-        return RpgResult<PlayStateResponse>.Ok(SecretRedactor.Redact(result.Value));
+        var value = result.Value with
+        {
+            Permissions = new PlayPermissionsDto(
+                access.CanReadGame,
+                access.CanPlayGame,
+                access.CanManageGame,
+                access.CanViewSecrets,
+                access.CanControlCharacter(access.CharacterId)),
+            CurrentPartyMember = new CurrentPartyMemberDto(
+                access.PartyMemberId,
+                access.Role,
+                access.CharacterId,
+                access.IsHost)
+        };
+
+        return RpgResult<PlayStateResponse>.Ok(access.CanViewSecrets ? value : SecretRedactor.Redact(value));
+    }
+
+    private async Task<ActionResult?> CreateAutoSnapshotAsync(GameAccess access, Guid gameStateId, string reason, CancellationToken cancellationToken)
+    {
+        var result = await _snapshots.CreateSnapshotAsync(access.OwnerAccountId, gameStateId, access.RequestAccountId, reason, cancellationToken);
+        return result.Status == RpgResultStatus.Ok
+            ? null
+            : StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "Не удалось создать auto-snapshot." });
     }
 
     private async Task NotifyIfOk<T>(

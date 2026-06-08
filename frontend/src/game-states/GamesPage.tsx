@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Plus, Settings, Shield, Swords, Trash2 } from 'lucide-react';
+import { Link2, LogOut, Plus, Settings, Shield, Swords, Trash2 } from 'lucide-react';
 import { campaignsApi, gameStatesApi, storyApi } from '../shared/api/endpoints';
 import { Button, AppShell, ConfirmButton, EmptyState, ErrorState, Field, LoadingState, Panel } from '../shared/components/ui';
 import { useAuth } from '../auth/useAuth';
@@ -110,6 +110,9 @@ export function GamesPage() {
                     <Settings size={16} /> Управление
                   </Button>
                   <Button onClick={() => navigate(`/games/${game.id}/play`)}>Продолжить</Button>
+                  <Button variant="secondary" onClick={() => navigate(`/games/${game.id}/invite`)}>
+                    <Link2 size={16} /> Invite
+                  </Button>
                   <ConfirmButton
                     variant="danger"
                     disabled={remove.isPending}

@@ -137,6 +137,37 @@ public sealed class PartyController : ControllerBase
         return Ok(new OperationResponse { Id = memberId, Message = "Персонаж назначен участнику партии" });
     }
 
+    [HttpPost("members/me/character")]
+    [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OperationResponse>> AssignMyCharacter(Guid gameStateId, [FromBody] AssignPartyMemberCharacterRequest? request, CancellationToken cancellationToken)
+    {
+        var current = _currentUser.GetRequiredUser();
+        var access = await _access.GetAccessAsync(current.AccountId, gameStateId, cancellationToken);
+        if (access is null || !access.CanPlayGame || !access.PartyMemberId.HasValue)
+        {
+            return AccessDenied(access);
+        }
+
+        var characterId = request?.ResolvedCharacterId;
+        if (!characterId.HasValue)
+        {
+            return BadRequest(new MessageResponse { Message = "characterId обязателен." });
+        }
+
+        var updated = await _party.AssignCharacterToAccountAsync(access.OwnerAccountId, gameStateId, current.AccountId, characterId.Value, cancellationToken);
+        if (!updated)
+        {
+            return Conflict(new MessageResponse { Message = "Персонаж не найден, не принадлежит игре или уже назначен другому участнику." });
+        }
+
+        await NotifyPartyUpdated(gameStateId, cancellationToken);
+        return Ok(new OperationResponse { Id = characterId.Value, Message = "Ваш персонаж назначен." });
+    }
+
     [HttpDelete("members/{memberId:guid}")]
     [ProducesResponseType(typeof(OperationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

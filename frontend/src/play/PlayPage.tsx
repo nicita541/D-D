@@ -4,10 +4,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Backpack,
+  Camera,
   Clock,
   Coins,
   Dice5,
   Footprints,
+  Link2,
   RotateCw,
   ScrollText,
   Send,
@@ -15,20 +17,24 @@ import {
   Shield,
   Sparkles,
   Swords,
+  Undo2,
+  Users,
 } from 'lucide-react';
-import { combatApi, inventoryApi, lootApi, playApi, travelApi, charactersApi, restApi, timeApi } from '../shared/api/endpoints';
-import type { JsonObject, PlayStateResponse } from '../shared/api/types';
+import { combatApi, inventoryApi, lootApi, partyApi, playApi, snapshotsApi, travelApi, charactersApi, restApi, timeApi } from '../shared/api/endpoints';
+import type { JsonObject, PlayPermissions, PlayStateResponse, SnapshotDto } from '../shared/api/types';
 import { arrayOfObjects, boolOf, firstText, idOf, numberOf, objectOf, textOf } from '../shared/api/json';
 import { AppShell, Button, ConfirmButton, EmptyState, ErrorState, LoadingState, Panel } from '../shared/components/ui';
 import { getErrorMessage } from '../shared/api/errors';
 import { modeInfo, operationDanger, operationLabel } from './labels';
 import { queryKeys } from '../shared/api/query-keys';
 import { normalizeTravelOptions } from './travel';
+import { useGameRealtime } from './useGameRealtime';
 
 export function PlayPage() {
   const { gameStateId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const realtimeStatus = useGameRealtime(gameStateId);
   const selectedCharacterStorageKey = `dnd.selectedCharacter.${gameStateId}`;
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() =>
     gameStateId ? window.localStorage.getItem(`dnd.selectedCharacter.${gameStateId}`) ?? '' : '',
@@ -36,27 +42,52 @@ export function PlayPage() {
   const status = useQuery({
     queryKey: queryKeys.play(gameStateId),
     queryFn: () => playApi.status(gameStateId),
-    refetchInterval: 15000,
+    refetchInterval: 10000,
+    enabled: Boolean(gameStateId),
+  });
+  const party = useQuery({
+    queryKey: queryKeys.party(gameStateId),
+    queryFn: () => partyApi.get(gameStateId),
+    enabled: Boolean(gameStateId),
+  });
+  const snapshots = useQuery({
+    queryKey: queryKeys.snapshots(gameStateId),
+    queryFn: () => snapshotsApi.list(gameStateId),
     enabled: Boolean(gameStateId),
   });
   const state = useMemo(() => normalizePlayState(status.data), [status.data]);
+  const permissions = state?.permissions ?? defaultPermissions;
+  const memberCharacterId = idOf(state?.currentPartyMember?.characterId) || '';
 
   const selectedCharacter = useMemo(() => {
     const characters = state?.characters ?? [];
+    if (!permissions.canManage && memberCharacterId) {
+      return characters.find((character) => character.id === memberCharacterId) ?? characters[0];
+    }
     if (selectedCharacterId) {
       return characters.find((character) => character.id === selectedCharacterId) ?? characters[0];
     }
     return characters[0];
-  }, [selectedCharacterId, state?.characters]);
+  }, [memberCharacterId, permissions.canManage, selectedCharacterId, state?.characters]);
 
-  const activeCharacterId = selectedCharacterId || idOf(selectedCharacter?.id) || '';
+  const activeCharacterId = permissions.canManage
+    ? selectedCharacterId || idOf(selectedCharacter?.id) || ''
+    : memberCharacterId || idOf(selectedCharacter?.id) || '';
+  const canControlActiveCharacter = permissions.canManage || (Boolean(activeCharacterId) && memberCharacterId === activeCharacterId);
+
   function selectCharacter(id: string) {
+    if (!permissions.canManage && memberCharacterId && id !== memberCharacterId) {
+      return;
+    }
+
     setSelectedCharacterId(id);
     window.localStorage.setItem(selectedCharacterStorageKey, id);
   }
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.play(gameStateId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.party(gameStateId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.snapshots(gameStateId) });
   }
 
   if (status.isLoading) {
@@ -75,15 +106,15 @@ export function PlayPage() {
     );
   }
 
-  if (!state || state.characters.length === 0) {
+  if (!state || (permissions.canPlay && !permissions.canManage && !memberCharacterId)) {
     return (
       <AppShell
         title="Нужен персонаж"
-        subtitle="Создай героя перед началом одиночной игры."
+        subtitle="Создай героя и привяжи его к своему участнику партии."
         actions={<BackButton onClick={() => navigate('/games')} />}
       >
         <Panel>
-          <EmptyState title="Персонажей нет" text="Setup создаст персонажа и стартовую сцену." />
+          <EmptyState title="Персонаж не назначен" text="Setup создаст героя и backend назначит его твоему party member." />
           <Link className="btn btn-primary" to={`/games/${gameStateId}/setup`}>
             Перейти к setup
           </Link>
@@ -95,15 +126,22 @@ export function PlayPage() {
   return (
     <AppShell
       title="Игровой стол"
-      subtitle={`${modeInfo(state.mode).label}: ${modeInfo(state.mode).text} · обновлено ${new Date(state.generatedAt).toLocaleTimeString()}`}
+      subtitle={`${modeInfo(state.mode).label}: ${modeInfo(state.mode).text} · realtime: ${realtimeLabel(realtimeStatus)} · обновлено ${new Date(state.generatedAt).toLocaleTimeString()}`}
       actions={
         <>
           <Button variant="secondary" onClick={refresh}>
             <RotateCw size={18} /> Обновить
           </Button>
+          {permissions.canManage ? (
           <Button variant="secondary" onClick={() => navigate(`/games/${gameStateId}/manage/characters`)}>
             <Settings size={18} /> Управление
           </Button>
+          ) : null}
+          {permissions.canManage ? (
+            <Button variant="secondary" onClick={() => navigate(`/games/${gameStateId}/invite`)}>
+              <Link2 size={18} /> Invite
+            </Button>
+          ) : null}
           <BackButton onClick={() => navigate('/games')} />
         </>
       }
@@ -115,24 +153,34 @@ export function PlayPage() {
             selectedCharacterId={activeCharacterId}
             onSelect={selectCharacter}
             onChanged={refresh}
+            locked={!permissions.canManage}
           />
-          <InventoryPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <PartyPanel
+            gameStateId={gameStateId}
+            party={objectOf(party.data)}
+            characters={state.characters}
+            permissions={permissions}
+            currentMemberId={idOf(state.currentPartyMember?.id)}
+            onChanged={refresh}
+          />
+          <InventoryPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} disabled={!canControlActiveCharacter} />
           <ProgressionPanel state={state} />
-          <RestTimePanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <RestTimePanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} disabled={!canControlActiveCharacter} />
         </aside>
 
         <section className="main-column">
           <ScenePanel state={state} />
-          <ActionPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <ActionPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} permissions={permissions} canControlActiveCharacter={canControlActiveCharacter} />
           <TurnsPanel state={state} />
         </section>
 
         <aside className="side-column">
-          <MechanicsPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
-          <ChangesPanel gameStateId={gameStateId} state={state} onChanged={refresh} />
-          <TravelPanel gameStateId={gameStateId} onChanged={refresh} />
-          <CombatPanel gameStateId={gameStateId} state={state} onChanged={refresh} />
-          <LootPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} />
+          <MechanicsPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} disabled={!canControlActiveCharacter} />
+          <ChangesPanel gameStateId={gameStateId} state={state} onChanged={refresh} canManage={permissions.canManage} />
+          <TravelPanel gameStateId={gameStateId} onChanged={refresh} disabled={!permissions.canPlay} />
+          <CombatPanel gameStateId={gameStateId} state={state} onChanged={refresh} activeCharacterId={activeCharacterId} permissions={permissions} />
+          <LootPanel gameStateId={gameStateId} characterId={activeCharacterId} state={state} onChanged={refresh} disabled={!canControlActiveCharacter} />
+          <SnapshotsPanel gameStateId={gameStateId} snapshots={snapshots.data ?? []} canManage={permissions.canManage} onChanged={refresh} />
         </aside>
       </div>
     </AppShell>
@@ -161,7 +209,23 @@ function normalizePlayState(state: PlayStateResponse | undefined): PlayStateResp
     activeConditions: arrayOfObjects(state.activeConditions),
     characterStates: arrayOfObjects(state.characterStates),
     generatedAt: textOf(state.generatedAt, new Date().toISOString()),
+    permissions: state.permissions ?? defaultPermissions,
+    currentPartyMember: state.currentPartyMember ?? null,
   };
+}
+
+const defaultPermissions: PlayPermissions = {
+  canRead: true,
+  canPlay: true,
+  canManage: false,
+  canViewSecrets: false,
+  canControlSelectedCharacter: true,
+};
+
+function realtimeLabel(status: 'online' | 'reconnecting' | 'polling') {
+  if (status === 'online') return 'online';
+  if (status === 'reconnecting') return 'reconnecting';
+  return 'polling';
 }
 
 function BackButton({ onClick }: { onClick: () => void }) {
@@ -177,11 +241,13 @@ function CharacterPanel({
   selectedCharacterId,
   onSelect,
   onChanged,
+  locked,
 }: {
   state: PlayStateResponse;
   selectedCharacterId: string;
   onSelect: (id: string) => void;
   onChanged: () => void;
+  locked: boolean;
 }) {
   const character = state.characters.find((item) => item.id === selectedCharacterId) ?? state.characters[0];
   const resources = objectOf(character?.resources ?? character?.ресурсы);
@@ -192,7 +258,7 @@ function CharacterPanel({
 
   return (
     <Panel title="Персонажи">
-      <select value={selectedCharacterId} onChange={(event) => onSelect(event.target.value)}>
+      <select value={selectedCharacterId} onChange={(event) => onSelect(event.target.value)} disabled={locked}>
         {state.characters.map((item) => (
           <option key={String(item.id)} value={String(item.id)}>
             {firstText(item, ['name', 'имя'], 'Персонаж')}
@@ -229,6 +295,105 @@ function CharacterPanel({
   );
 }
 
+function PartyPanel({
+  gameStateId,
+  party,
+  characters,
+  permissions,
+  currentMemberId,
+  onChanged,
+}: {
+  gameStateId: string;
+  party: JsonObject | null;
+  characters: JsonObject[];
+  permissions: PlayPermissions;
+  currentMemberId?: string;
+  onChanged: () => void;
+}) {
+  const members = arrayOfObjects(party?.участники ?? party?.members);
+  const updateRole = useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: string }) => partyApi.updateMember(gameStateId, memberId, { role }),
+    onSuccess: onChanged,
+  });
+  const assignCharacter = useMutation({
+    mutationFn: ({ memberId, characterId }: { memberId: string; characterId: string }) =>
+      memberId === currentMemberId && !permissions.canManage
+        ? partyApi.assignMyCharacter(gameStateId, characterId)
+        : partyApi.assignMemberCharacter(gameStateId, memberId, characterId),
+    onSuccess: onChanged,
+  });
+  const remove = useMutation({
+    mutationFn: (memberId: string) => partyApi.removeMember(gameStateId, memberId),
+    onSuccess: onChanged,
+  });
+
+  return (
+    <Panel title="Партия" actions={<Users size={18} />}>
+      {members.length === 0 ? <EmptyState title="Партия пока пуста" /> : null}
+      <div className="list-stack">
+        {members.map((member) => {
+          const memberId = String(member.id);
+          const role = textOf(member.роль ?? member.role, 'player');
+          const characterId = idOf(member.characterId);
+          const character = characters.find((item) => String(item.id) === characterId);
+          const isMe = memberId === currentMemberId;
+          return (
+            <div className="mini-card" key={memberId}>
+              <strong>
+                {firstText(member, ['отображаемоеИмя', 'displayName'], isMe ? 'Вы' : 'Участник')} {isMe ? '· вы' : ''}
+              </strong>
+              <small>
+                <span className="badge">{role}</span> персонаж:{' '}
+                {character ? firstText(character, ['name', 'имя'], 'Персонаж') : characterId || 'не назначен'}
+              </small>
+              {permissions.canManage ? (
+                <div className="button-row">
+                  <select value={role} onChange={(event) => updateRole.mutate({ memberId, role: event.target.value })}>
+                    <option value="host">host</option>
+                    <option value="player">player</option>
+                    <option value="observer">observer</option>
+                    <option value="gm">gm</option>
+                  </select>
+                  <select
+                    value={characterId}
+                    onChange={(event) => event.target.value && assignCharacter.mutate({ memberId, characterId: event.target.value })}
+                  >
+                    <option value="">Без персонажа</option>
+                    {characters.map((item) => (
+                      <option key={String(item.id)} value={String(item.id)}>
+                        {firstText(item, ['name', 'имя'], 'Персонаж')}
+                      </option>
+                    ))}
+                  </select>
+                  <ConfirmButton variant="danger" confirmText="Удалить участника из партии?" onConfirm={() => remove.mutate(memberId)}>
+                    Кик
+                  </ConfirmButton>
+                </div>
+              ) : isMe && permissions.canPlay && !characterId ? (
+                <div className="button-row">
+                  <select onChange={(event) => event.target.value && assignCharacter.mutate({ memberId, characterId: event.target.value })}>
+                    <option value="">Назначить своего героя</option>
+                    {characters.map((item) => (
+                      <option key={String(item.id)} value={String(item.id)}>
+                        {firstText(item, ['name', 'имя'], 'Персонаж')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {[updateRole.error, assignCharacter.error, remove.error].filter(Boolean).map((error, index) => (
+        <p className="form-error" key={index}>
+          {getErrorMessage(error)}
+        </p>
+      ))}
+    </Panel>
+  );
+}
+
 function LevelUpButton({ characterId, onChanged }: { characterId: string; onChanged: () => void }) {
   const { gameStateId = '' } = useParams();
   const levelUp = useMutation({
@@ -261,11 +426,15 @@ function ActionPanel({
   characterId,
   state,
   onChanged,
+  permissions,
+  canControlActiveCharacter,
 }: {
   gameStateId: string;
   characterId: string;
   state: PlayStateResponse;
   onChanged: () => void;
+  permissions: PlayPermissions;
+  canControlActiveCharacter: boolean;
 }) {
   const [message, setMessage] = useState('');
   const action = useMutation({
@@ -282,12 +451,16 @@ function ActionPanel({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!message.trim() || state.mode === 'awaiting_roll') return;
+    if (!message.trim() || state.mode === 'awaiting_roll' || !permissions.canPlay || !canControlActiveCharacter) return;
     action.mutate();
   }
 
+  const actionDisabled = action.isPending || !message.trim() || state.mode === 'awaiting_roll' || !permissions.canPlay || !canControlActiveCharacter;
+
   return (
     <Panel title="Действие игрока">
+      {!permissions.canPlay ? <div className="notice">Вы в режиме наблюдателя. Действия отключены.</div> : null}
+      {permissions.canPlay && !canControlActiveCharacter ? <div className="notice">Сначала нужен назначенный персонаж.</div> : null}
       {state.mode === 'awaiting_roll' ? (
         <div className="notice">Сначала нужно закрыть бросок. Новые действия не отправляются, пока игра ждёт проверку.</div>
       ) : null}
@@ -309,12 +482,13 @@ function ActionPanel({
           onChange={(event) => setMessage(event.target.value)}
           placeholder="Я осматриваюсь вокруг и ищу следы..."
           maxLength={4000}
+          disabled={!permissions.canPlay || !canControlActiveCharacter}
         />
-        <Button type="submit" disabled={action.isPending || !message.trim() || state.mode === 'awaiting_roll'}>
+        <Button type="submit" disabled={actionDisabled}>
           <Send size={18} /> {action.isPending ? 'Отправляем...' : 'Действовать'}
         </Button>
       </form>
-      <Button variant="secondary" disabled={continueScene.isPending || state.mode === 'awaiting_roll'} onClick={() => continueScene.mutate()}>
+      <Button variant="secondary" disabled={continueScene.isPending || state.mode === 'awaiting_roll' || !permissions.canPlay} onClick={() => continueScene.mutate()}>
         Продолжить сцену
       </Button>
       {[action.error, continueScene.error].filter(Boolean).map((error, index) => <p className="form-error" key={index}>{getErrorMessage(error)}</p>)}
@@ -327,11 +501,13 @@ function MechanicsPanel({
   characterId,
   state,
   onChanged,
+  disabled,
 }: {
   gameStateId: string;
   characterId: string;
   state: PlayStateResponse;
   onChanged: () => void;
+  disabled: boolean;
 }) {
   const resolve = useMutation({
     mutationFn: (requestId: string) => playApi.resolveAndContinue(gameStateId, requestId, characterId),
@@ -346,7 +522,7 @@ function MechanicsPanel({
           <div className="mini-card" key={String(request.id)}>
             <strong>{textOf(request.requestType ?? request.type, 'проверка')}</strong>
             <small>{describePayload(objectOf(request.payload))}</small>
-            <Button onClick={() => resolve.mutate(String(request.id))} disabled={resolve.isPending || !characterId}>
+            <Button onClick={() => resolve.mutate(String(request.id))} disabled={resolve.isPending || !characterId || disabled}>
               Бросить и продолжить
             </Button>
           </div>
@@ -357,7 +533,7 @@ function MechanicsPanel({
   );
 }
 
-function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; state: PlayStateResponse; onChanged: () => void }) {
+function ChangesPanel({ gameStateId, state, onChanged, canManage }: { gameStateId: string; state: PlayStateResponse; onChanged: () => void; canManage: boolean }) {
   const applySafe = useMutation({ mutationFn: () => playApi.applySafeChanges(gameStateId), onSuccess: onChanged });
   const apply = useMutation({ mutationFn: (id: string) => playApi.applyChange(gameStateId, id), onSuccess: onChanged });
   const reject = useMutation({ mutationFn: (id: string) => playApi.rejectChange(gameStateId, id, 'Отклонено игроком.'), onSuccess: onChanged });
@@ -366,9 +542,11 @@ function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; 
     <Panel
       title="Изменения"
       actions={
+        canManage ? (
         <Button variant="secondary" onClick={() => applySafe.mutate()} disabled={applySafe.isPending || state.pendingChanges.length === 0}>
           Auto safe
         </Button>
+        ) : null
       }
     >
       {state.pendingChanges.length === 0 ? <EmptyState title="Нет pending changes" /> : null}
@@ -382,6 +560,7 @@ function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; 
               </span>
             </div>
             <small>{payloadSummary(textOf(change.operation, ''), objectOf(change.payload))}</small>
+            {canManage ? (
             <div className="button-row">
               {operationDanger(textOf(change.operation, '')) ? (
                 <ConfirmButton variant="danger" confirmText="Применить потенциально опасное изменение?" onConfirm={() => apply.mutate(String(change.id))}>
@@ -394,6 +573,9 @@ function ChangesPanel({ gameStateId, state, onChanged }: { gameStateId: string; 
                 Отклонить
               </ConfirmButton>
             </div>
+            ) : (
+              <small className="muted">Ожидает подтверждения host.</small>
+            )}
           </div>
         ))}
       </div>
@@ -411,11 +593,13 @@ function InventoryPanel({
   characterId,
   state,
   onChanged,
+  disabled,
 }: {
   gameStateId: string;
   characterId: string;
   state: PlayStateResponse;
   onChanged: () => void;
+  disabled: boolean;
 }) {
   const [name, setName] = useState('Дорожный паёк');
   const [itemType, setItemType] = useState('consumable');
@@ -452,7 +636,7 @@ function InventoryPanel({
           <option value="armor">armor</option>
           <option value="misc">misc</option>
         </select>
-        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId}>
+        <Button onClick={() => create.mutate()} disabled={create.isPending || !characterId || disabled}>
           Добавить
         </Button>
       </form>
@@ -467,16 +651,16 @@ function InventoryPanel({
                 {textOf(item.itemType ?? item.item_type ?? item.тип, 'item')} · x{numberOf(item.quantity ?? item.количество, 1)}
               </small>
               <div className="button-row">
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
+                <Button variant="secondary" disabled={disabled} onClick={() => itemAction.mutate({ action: 'equip', itemId: id })}>
                   Надеть
                 </Button>
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
+                <Button variant="secondary" disabled={disabled} onClick={() => itemAction.mutate({ action: 'unequip', itemId: id })}>
                   Снять
                 </Button>
-                <Button variant="secondary" onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
+                <Button variant="secondary" disabled={disabled} onClick={() => itemAction.mutate({ action: 'use', itemId: id })}>
                   Использовать
                 </Button>
-                <ConfirmButton variant="danger" confirmText="Удалить предмет?" onConfirm={() => itemAction.mutate({ action: 'delete', itemId: id })}>
+                <ConfirmButton variant="danger" disabled={disabled} confirmText="Удалить предмет?" onConfirm={() => itemAction.mutate({ action: 'delete', itemId: id })}>
                   Удалить
                 </ConfirmButton>
               </div>
@@ -493,7 +677,7 @@ function InventoryPanel({
   );
 }
 
-function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChanged: () => void }) {
+function TravelPanel({ gameStateId, onChanged, disabled }: { gameStateId: string; onChanged: () => void; disabled: boolean }) {
   const options = useQuery({ queryKey: queryKeys.world(gameStateId, 'travel-options'), queryFn: () => travelApi.options(gameStateId) });
   const travelOptions = normalizeTravelOptions(options.data);
   const travel = useMutation({
@@ -514,7 +698,7 @@ function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChange
             <div className="mini-card" key={`${target ?? index}-${exitId ?? 'direct'}`}>
               <strong>{firstText(targetLocation ?? option, ['targetLocationName', 'name', 'название'], 'Локация')}</strong>
               <small>{firstText(option, ['direction', 'description', 'описание'], firstText(targetLocation, ['description', 'описание'], exitId ? 'Переход' : 'Прямой переход'))}</small>
-              <Button variant="secondary" disabled={!target || travel.isPending} onClick={() => target && travel.mutate({ targetLocationId: target, exitId })}>
+              <Button variant="secondary" disabled={!target || travel.isPending || disabled} onClick={() => target && travel.mutate({ targetLocationId: target, exitId })}>
                 Перейти
               </Button>
             </div>
@@ -527,14 +711,29 @@ function TravelPanel({ gameStateId, onChanged }: { gameStateId: string; onChange
   );
 }
 
-function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; state: PlayStateResponse; onChanged: () => void }) {
+function CombatPanel({
+  gameStateId,
+  state,
+  onChanged,
+  activeCharacterId,
+  permissions,
+}: {
+  gameStateId: string;
+  state: PlayStateResponse;
+  onChanged: () => void;
+  activeCharacterId: string;
+  permissions: PlayPermissions;
+}) {
   const [attackerId, setAttackerId] = useState('');
   const [targetId, setTargetId] = useState('');
   const start = useMutation({ mutationFn: () => combatApi.start(gameStateId), onSuccess: onChanged });
   const end = useMutation({ mutationFn: () => combatApi.end(gameStateId), onSuccess: onChanged });
   const resolve = useMutation({ mutationFn: () => combatApi.resolveOutcome(gameStateId), onSuccess: onChanged });
   const continueCombat = useMutation({ mutationFn: () => combatApi.continue(gameStateId), onSuccess: onChanged });
-  const participants = arrayOfObjects(state.combat?.participants);
+  const participants = arrayOfObjects(state.combat?.participants ?? state.combat?.участники);
+  const attackerOptions = permissions.canManage
+    ? participants
+    : participants.filter((participant) => textOf(participant.типАктера ?? participant.actorType, '') === 'character' && idOf(participant.actorId) === activeCharacterId);
   const attack = useMutation({
     mutationFn: () => combatApi.action(gameStateId, {
       attackerParticipantId: attackerId,
@@ -572,28 +771,28 @@ function CombatPanel({ gameStateId, state, onChanged }: { gameStateId: string; s
         <div className="form-stack">
           <select value={attackerId} onChange={(event) => setAttackerId(event.target.value)}>
             <option value="">Атакующий</option>
-            {participants.map((participant) => <option key={String(participant.id)} value={String(participant.id)}>{firstText(participant, ['name', 'имя'], 'Участник')}</option>)}
+            {attackerOptions.map((participant) => <option key={String(participant.id)} value={String(participant.id)}>{firstText(participant, ['name', 'имя'], 'Участник')}</option>)}
           </select>
           <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
             <option value="">Цель</option>
             {participants.map((participant) => <option key={String(participant.id)} value={String(participant.id)}>{firstText(participant, ['name', 'имя'], 'Участник')}</option>)}
           </select>
-          <Button disabled={!attackerId || !targetId || attackerId === targetId || attack.isPending} onClick={() => attack.mutate()}>
+          <Button disabled={!permissions.canPlay || !attackerId || !targetId || attackerId === targetId || attack.isPending} onClick={() => attack.mutate()}>
             Атаковать
           </Button>
         </div>
       ) : null}
       <div className="button-row">
-        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending}>
+        <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending || !permissions.canPlay}>
           Начать
         </Button>
-        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending}>
+        <Button variant="secondary" onClick={() => resolve.mutate()} disabled={resolve.isPending || !permissions.canPlay}>
           Исход
         </Button>
-        <Button variant="secondary" onClick={() => continueCombat.mutate()} disabled={continueCombat.isPending}>
+        <Button variant="secondary" onClick={() => continueCombat.mutate()} disabled={continueCombat.isPending || !permissions.canPlay}>
           Продолжить бой
         </Button>
-        <ConfirmButton variant="danger" confirmText="Завершить активный бой?" onConfirm={() => end.mutate()} disabled={end.isPending}>
+        <ConfirmButton variant="danger" confirmText="Завершить активный бой?" onConfirm={() => end.mutate()} disabled={end.isPending || !permissions.canPlay}>
           Завершить
         </ConfirmButton>
       </div>
@@ -627,11 +826,13 @@ function RestTimePanel({
   characterId,
   state,
   onChanged,
+  disabled,
 }: {
   gameStateId: string;
   characterId: string;
   state: PlayStateResponse;
   onChanged: () => void;
+  disabled: boolean;
 }) {
   const time = objectOf(state.time);
   const selectedState = state.characterStates.find((item) => String(item.characterId ?? item.id) === characterId);
@@ -667,13 +868,13 @@ function RestTimePanel({
         </div>
       ) : null}
       <div className="button-row">
-        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('short-rest')}>
+        <Button variant="secondary" disabled={action.isPending || disabled} onClick={() => action.mutate('short-rest')}>
           Короткий отдых
         </Button>
-        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('long-rest')}>
+        <Button variant="secondary" disabled={action.isPending || disabled} onClick={() => action.mutate('long-rest')}>
           Долгий отдых
         </Button>
-        <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate('advance-time')}>
+        <Button variant="secondary" disabled={action.isPending || disabled} onClick={() => action.mutate('advance-time')}>
           +1 час
         </Button>
       </div>
@@ -687,11 +888,13 @@ function LootPanel({
   characterId,
   state,
   onChanged,
+  disabled,
 }: {
   gameStateId: string;
   characterId: string;
   state: PlayStateResponse;
   onChanged: () => void;
+  disabled: boolean;
 }) {
   const claim = useMutation({ mutationFn: (id: string) => lootApi.claim(gameStateId, id, characterId), onSuccess: onChanged });
   const available = state.loot.filter((item) => textOf(item.status, 'available') === 'available');
@@ -703,12 +906,74 @@ function LootPanel({
         <div className="mini-card" key={String(loot.id)}>
           <strong>{firstText(loot, ['name', 'название'], 'Добыча')}</strong>
           <small>{truncate(JSON.stringify(loot), 100)}</small>
-          <Button variant="secondary" onClick={() => claim.mutate(String(loot.id))} disabled={claim.isPending || !characterId}>
+          <Button variant="secondary" onClick={() => claim.mutate(String(loot.id))} disabled={claim.isPending || !characterId || disabled}>
             Забрать
           </Button>
         </div>
       ))}
       {claim.error ? <p className="form-error">{getErrorMessage(claim.error)}</p> : null}
+    </Panel>
+  );
+}
+
+function SnapshotsPanel({
+  gameStateId,
+  snapshots,
+  canManage,
+  onChanged,
+}: {
+  gameStateId: string;
+  snapshots: SnapshotDto[];
+  canManage: boolean;
+  onChanged: () => void;
+}) {
+  const create = useMutation({
+    mutationFn: () => snapshotsApi.create(gameStateId, 'Ручной snapshot из frontend.'),
+    onSuccess: onChanged,
+  });
+  const restore = useMutation({
+    mutationFn: (snapshotId: string) => snapshotsApi.restore(gameStateId, snapshotId),
+    onSuccess: onChanged,
+  });
+
+  return (
+    <Panel
+      title="Snapshots"
+      actions={
+        canManage ? (
+          <Button variant="secondary" disabled={create.isPending} onClick={() => create.mutate()}>
+            <Camera size={18} /> Снимок
+          </Button>
+        ) : null
+      }
+    >
+      {snapshots.length === 0 ? <EmptyState title="Снимков пока нет" /> : null}
+      <div className="list-stack">
+        {snapshots.slice(0, 5).map((snapshot) => (
+          <div className="mini-card" key={snapshot.id}>
+            <strong>{snapshot.reason || 'Snapshot'}</strong>
+            <small>
+              {new Date(snapshot.createdAt).toLocaleString()}
+              {snapshot.restoredAt ? ` · restored ${new Date(snapshot.restoredAt).toLocaleString()}` : ''}
+            </small>
+            {canManage ? (
+              <ConfirmButton
+                variant="danger"
+                disabled={restore.isPending}
+                confirmText="Откатить игровое состояние к этому snapshot?"
+                onConfirm={() => restore.mutate(snapshot.id)}
+              >
+                <Undo2 size={16} /> Откатиться
+              </ConfirmButton>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {[create.error, restore.error].filter(Boolean).map((error, index) => (
+        <p className="form-error" key={index}>
+          {getErrorMessage(error)}
+        </p>
+      ))}
     </Panel>
   );
 }

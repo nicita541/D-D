@@ -219,6 +219,20 @@ public sealed class AllApiSurfaceContractTests
             "GET api/game-states/{gameStateId:guid}",
             "DELETE api/game-states/{gameStateId:guid}",
 
+            "POST api/game-states/{gameStateId:guid}/invites",
+            "GET api/invites/{token}",
+            "POST api/invites/{token}/accept",
+            "DELETE api/game-states/{gameStateId:guid}/invites/{inviteId:guid}",
+
+            "GET api/game-states/{gameStateId:guid}/party",
+            "POST api/game-states/{gameStateId:guid}/party",
+            "POST api/game-states/{gameStateId:guid}/party/members",
+            "PATCH api/game-states/{gameStateId:guid}/party/members/{memberId:guid}",
+            "POST api/game-states/{gameStateId:guid}/party/members/{memberId:guid}/character",
+            "POST api/game-states/{gameStateId:guid}/party/members/me/character",
+            "DELETE api/game-states/{gameStateId:guid}/party/members/{memberId:guid}",
+            "DELETE api/game-states/{gameStateId:guid}/party/members/me",
+
             "GET api/game-states/{gameStateId:guid}/characters",
             "POST api/game-states/{gameStateId:guid}/characters",
             "GET api/game-states/{gameStateId:guid}/characters/{characterId:guid}",
@@ -247,6 +261,10 @@ public sealed class AllApiSurfaceContractTests
             "POST api/game-states/{gameStateId:guid}/play/summarize",
             "POST api/game-states/{gameStateId:guid}/play/bootstrap",
             "GET api/game-states/{gameStateId:guid}/travel/options",
+
+            "GET api/game-states/{gameStateId:guid}/snapshots",
+            "POST api/game-states/{gameStateId:guid}/snapshots",
+            "POST api/game-states/{gameStateId:guid}/snapshots/{snapshotId:guid}/restore",
 
             "GET api/game-states/{gameStateId:guid}/time",
             "POST api/game-states/{gameStateId:guid}/time/advance",

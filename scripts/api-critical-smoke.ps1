@@ -196,6 +196,16 @@ $importantRoutes = @(
 
     "/api/game-states",
     "/api/game-states/{gameStateId}",
+    "/api/game-states/{gameStateId}/invites",
+    "/api/invites/{token}",
+    "/api/invites/{token}/accept",
+    "/api/game-states/{gameStateId}/invites/{inviteId}",
+    "/api/game-states/{gameStateId}/party",
+    "/api/game-states/{gameStateId}/party/members",
+    "/api/game-states/{gameStateId}/party/members/{memberId}",
+    "/api/game-states/{gameStateId}/party/members/{memberId}/character",
+    "/api/game-states/{gameStateId}/party/members/me",
+    "/api/game-states/{gameStateId}/party/members/me/character",
 
     "/api/game-states/{gameStateId}/characters",
     "/api/game-states/{gameStateId}/characters/{characterId}",
@@ -222,6 +232,8 @@ $importantRoutes = @(
 "/api/game-states/{gameStateId}/play/summarize",
 "/api/game-states/{gameStateId}/play/bootstrap",
 "/api/game-states/{gameStateId}/travel/options",
+"/api/game-states/{gameStateId}/snapshots",
+"/api/game-states/{gameStateId}/snapshots/{snapshotId}/restore",
 
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory",
     "/api/game-states/{gameStateId}/characters/{characterId}/inventory/items",

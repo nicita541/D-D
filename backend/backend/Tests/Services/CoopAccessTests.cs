@@ -69,6 +69,44 @@ public sealed class CoopAccessTests
     }
 
     [Fact]
+    public void PlayStateResponse_Serializes_Coop_Permissions_And_Current_Member()
+    {
+        var memberId = Guid.NewGuid();
+        var characterId = Guid.NewGuid();
+        var response = EmptyPlayState(JsonSerializer.SerializeToElement(new { ok = true })) with
+        {
+            Permissions = new PlayPermissionsDto(
+                CanRead: true,
+                CanPlay: true,
+                CanManage: false,
+                CanViewSecrets: false,
+                CanControlSelectedCharacter: true),
+            CurrentPartyMember = new CurrentPartyMemberDto(
+                memberId,
+                GameAccessRoles.Player,
+                characterId,
+                IsHost: false)
+        };
+
+        var json = JsonSerializer.SerializeToElement(
+            response,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        var permissions = json.GetProperty("permissions");
+        Assert.True(permissions.GetProperty("canRead").GetBoolean());
+        Assert.True(permissions.GetProperty("canPlay").GetBoolean());
+        Assert.False(permissions.GetProperty("canManage").GetBoolean());
+        Assert.False(permissions.GetProperty("canViewSecrets").GetBoolean());
+        Assert.True(permissions.GetProperty("canControlSelectedCharacter").GetBoolean());
+
+        var current = json.GetProperty("currentPartyMember");
+        Assert.Equal(memberId, current.GetProperty("id").GetGuid());
+        Assert.Equal(GameAccessRoles.Player, current.GetProperty("role").GetString());
+        Assert.Equal(characterId, current.GetProperty("characterId").GetGuid());
+        Assert.False(current.GetProperty("isHost").GetBoolean());
+    }
+
+    [Fact]
     public void SecretRedactor_Removes_Master_And_Debug_Fields_Recursively()
     {
         var gameState = JsonSerializer.SerializeToElement(new

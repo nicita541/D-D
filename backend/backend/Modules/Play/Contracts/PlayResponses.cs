@@ -62,4 +62,19 @@ public sealed record PlayStateResponse(
     IReadOnlyList<JsonElement> ActiveConditions,
     JsonElement? RestAvailable,
     IReadOnlyList<JsonElement> CharacterStates,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt,
+    PlayPermissionsDto? Permissions = null,
+    CurrentPartyMemberDto? CurrentPartyMember = null);
+
+public sealed record PlayPermissionsDto(
+    bool CanRead,
+    bool CanPlay,
+    bool CanManage,
+    bool CanViewSecrets,
+    bool CanControlSelectedCharacter);
+
+public sealed record CurrentPartyMemberDto(
+    Guid? Id,
+    string Role,
+    Guid? CharacterId,
+    bool IsHost);

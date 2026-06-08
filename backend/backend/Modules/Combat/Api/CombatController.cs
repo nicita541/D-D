@@ -3,6 +3,7 @@ using backend.Modules.Combat.Application;
 using backend.Modules.Combat.Contracts;
 using backend.Modules.Combat.Domain;
 using backend.Modules.Realtime;
+using backend.Modules.Snapshots.Application;
 using backend.Shared.Contracts;
 using backend.Shared.Kernel;
 using Microsoft.AspNetCore.Authorization;
@@ -20,19 +21,22 @@ public sealed class CombatController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly IGameAccessService _access;
     private readonly IGameRealtimeNotifier _realtime;
+    private readonly ISnapshotService _snapshots;
 
     public CombatController(
         ICombatService combat,
         ICombatOutcomeService outcome,
         ICurrentUserService currentUser,
         IGameAccessService access,
-        IGameRealtimeNotifier realtime)
+        IGameRealtimeNotifier realtime,
+        ISnapshotService snapshots)
     {
         _combat = combat;
         _outcome = outcome;
         _currentUser = currentUser;
         _access = access;
         _realtime = realtime;
+        _snapshots = snapshots;
     }
 
     [HttpGet]
@@ -67,6 +71,12 @@ public sealed class CombatController : ControllerBase
 
         try
         {
+            var snapshotError = await CreateAutoSnapshotAsync(access.Value!, gameStateId, "auto: before direct combat start", cancellationToken);
+            if (snapshotError is not null)
+            {
+                return snapshotError;
+            }
+
             var id = await _combat.StartCombatAsync(access.Value!.OwnerAccountId, gameStateId, payload, cancellationToken);
             if (!id.HasValue)
             {
@@ -350,6 +360,14 @@ public sealed class CombatController : ControllerBase
         }
 
         return false;
+    }
+
+    private async Task<ActionResult?> CreateAutoSnapshotAsync(GameAccess access, Guid gameStateId, string reason, CancellationToken cancellationToken)
+    {
+        var result = await _snapshots.CreateSnapshotAsync(access.OwnerAccountId, gameStateId, access.RequestAccountId, reason, cancellationToken);
+        return result.Status == RpgResultStatus.Ok
+            ? null
+            : StatusCode(StatusCodes.Status503ServiceUnavailable, new MessageResponse { Message = result.Message ?? "Не удалось создать auto-snapshot." });
     }
 
     private Task NotifyCombatUpdated(Guid gameStateId, string reason, CancellationToken cancellationToken)

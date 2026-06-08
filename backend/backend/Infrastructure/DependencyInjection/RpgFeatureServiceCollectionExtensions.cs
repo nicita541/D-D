@@ -9,6 +9,7 @@ using backend.Modules.Mechanics.DependencyInjection;
 using backend.Modules.Memory.DependencyInjection;
 using backend.Modules.Party.DependencyInjection;
 using backend.Modules.Play.DependencyInjection;
+using backend.Modules.Snapshots.DependencyInjection;
 using backend.Modules.Story.DependencyInjection;
 using backend.Modules.Travel.DependencyInjection;
 using backend.Modules.Turns.DependencyInjection;
@@ -34,6 +35,7 @@ public static class RpgFeatureServiceCollectionExtensions
         services.AddCampaignsModule();
         services.AddPartyModule();
         services.AddStoryModule();
+        services.AddSnapshotsModule();
         services.AddPlayModule();
 
         return services;
